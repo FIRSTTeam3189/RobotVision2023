@@ -1,27 +1,11 @@
-/*
- * Copyright 2022 l1npengtul <l1npengtul@protonmail.com> / The Nokhwa Contributors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-use std::sync::{
+use std::{sync::{
     mpsc::{channel, Receiver, Sender},
     Mutex,
-};
+}};
 
 use eframe::egui;
 use egui::{ColorImage, TextureHandle};
-use image::{ImageBuffer, Rgba};
+use image::{ImageBuffer, Rgba, imageops};
 use nokhwa::{
     pixel_format::RgbAFormat,
     threaded::CallbackCamera,
@@ -87,6 +71,8 @@ pub struct WebcamApp {
     image: Option<ColorImage>,
     texture: Option<TextureHandle>,
     image_receiver: Receiver<ImgBuf>,
+    count: usize,
+    frames_recved: usize
 }
 
 impl WebcamApp {
@@ -96,6 +82,8 @@ impl WebcamApp {
             image: None,
             texture: None,
             image_receiver,
+            count: 0,
+            frames_recved: 0
         }
     }
 }
@@ -122,11 +110,29 @@ impl eframe::App for WebcamApp {
     fn post_rendering(&mut self, _window_size_px: [u32; 2], _frame: &eframe::Frame) {
         // Try and see if there is an image coming in from the camera thread
         if let Ok(frame) = self.image_receiver.try_recv() {
+            // Convert to grayscale image
+            let grayscale: ImageBuffer<Rgba<u8>, Vec<u8>> = imageops::grayscale_with_type(&frame);
+
+            // Save an image every 60 frames
+            // Increment Frames received
+            self.frames_recved += 1;
+            if self.frames_recved % 60 == 0 {
+                let _path = format!("./image-{}.jpg", self.count);
+                self.count += 1;
+                #[cfg(feature = "save-pix")]
+                if let Err(e) = grayscale.save(_path) {
+                    println!("Failed to save image: {e}");
+                }
+                #[cfg(not(feature = "save-pix"))]
+                println!("{} frames received", 60 * self.count)
+            }
+
             // Get the pixel frame data and create a new ColorImage
-            let size = [frame.width() as _, frame.height() as _];
-            let image_buffer = frame.as_flat_samples();
+            let size = [grayscale.width() as _, grayscale.height() as _];
+            let image_buffer = grayscale.as_flat_samples();
             let image = ColorImage::from_rgba_unmultiplied(size, image_buffer.as_slice());
             self.image = Some(image)
         }
     }
+
 }
