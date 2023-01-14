@@ -1,7 +1,7 @@
 use std::{sync::{
     mpsc::{channel, Receiver, Sender},
-    Mutex,
 }};
+use parking_lot::Mutex;
 
 use eframe::egui;
 use egui::{ColorImage, TextureHandle};
@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn callback(image: Buffer) {
     // Get a lock to the image sender
-    let tx = IMAGE_SENDER.get().unwrap().lock().unwrap();
+    let tx = IMAGE_SENDER.get().unwrap().lock();
     // Decode the image as RGBA from the webcam
     match image.decode_image::<RgbAFormat>() {
         Ok(frame) => {
