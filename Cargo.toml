@@ -36,6 +36,9 @@ toml = "0.4.2"
 # Error library
 thiserror = "1.0"
 
+# Parking Lot for Mutexes without Poisoning
+parking_lot = "0.12"
+
 [dependencies.nokhwa]
 #git = "https://github.com/l1npengtul/nokhwa"
 #branch = "senpai"
