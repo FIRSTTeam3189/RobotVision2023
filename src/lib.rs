@@ -196,8 +196,8 @@ pub enum AprilTagFamily {
     TagCustom48h12,
 }
 
-impl From<AprilTagFamily> for Family {
-    fn from(value: AprilTagFamily) -> Self {
+impl From<&AprilTagFamily> for Family {
+    fn from(value: &AprilTagFamily) -> Self {
         match value {
             AprilTagFamily::Tag16H5 => "tag16h5".parse().unwrap(),
             AprilTagFamily::Tag25H9 => "tag25h9".parse().unwrap(),

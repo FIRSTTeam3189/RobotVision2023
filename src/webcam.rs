@@ -1,7 +1,5 @@
-use std::sync::{
-    mpsc::{channel, Receiver, Sender},
-};
 use parking_lot::Mutex;
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 use eframe::egui;
 use egui::{ColorImage, TextureHandle};
@@ -14,7 +12,7 @@ use nokhwa::{
 };
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
-use vision::{ImgBuf, process::Processing};
+use vision::{process::Processing, ImgBuf};
 
 /// The channel on which frames are sent to the GUI
 static IMAGE_SENDER: OnceCell<Arc<Mutex<Sender<ImgBuf>>>> = OnceCell::new();
@@ -33,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize camera, request the highest possible framerate
     let format = RequestedFormatType::AbsoluteHighestFrameRate;
     let format = RequestedFormat::new::<RgbAFormat>(format);
-    let mut camera = CallbackCamera::new(CameraIndex::Index(0), format, callback).unwrap();
+    let mut camera = CallbackCamera::new(CameraIndex::Index(1), format, callback).unwrap();
 
     //Start processing thread
     let process = Processing::new(rx, process_tx);

@@ -1,7 +1,13 @@
 use crate::{CalibrationError, CameraCalibration, DetectorParameters, ImgBuf};
+use apriltag::{Detector, DetectorBuilder};
 use image::{imageops, Rgba};
 use imageproc::{self, rect::Rect};
-use std::{path::Path, sync::mpsc::{Receiver, RecvError, SendError, Sender}, thread, thread::JoinHandle};
+use std::{
+    path::Path,
+    sync::mpsc::{Receiver, RecvError, SendError, Sender},
+    thread,
+    thread::JoinHandle,
+};
 
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -82,15 +88,22 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
     let blue = Rgba([0u8, 0u8, 255u8, 255u8]);
     let rectangle = Rect::at(130, 10).of_size(200, 200);
 
+    let detector = DetectorBuilder::new();
+    let detector = parameters
+        .families
+        .iter()
+        .fold(detector, |d, f| d.add_family_bits(f.into(), 1));
+
+    let detector = detector.build().unwrap();
+
     loop {
         let image = image_rx.recv()?;
         // Convert to grayscale image
         let grayscale: ImgBuf = imageops::grayscale_with_type(&image);
 
         // Do the actuall proccessing here
-        
+
         sender.send(grayscale)?;
-        
     }
 
     Ok(())
