@@ -1,10 +1,17 @@
 use std::path::Path;
 
 use apriltag::Family;
+use image::{ImageBuffer, Rgba};
+use imageproc::geometric_transformations::Projection;
 use nalgebra::Matrix3x1;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use imageproc::geometric_transformations::Projection;
+
+pub mod process;
+
+/// The type of image being targeted for processing.
+/// This ends up being a RGBA (32-bits/pixel) image per camera frame read
+pub type ImgBuf = ImageBuffer<Rgba<u8>, Vec<u8>>;
 
 /// Errors pertaining to errors in reading/using camera calibration information
 #[derive(Error, Debug)]
@@ -14,33 +21,33 @@ pub enum CalibrationError {
     #[error(transparent)]
     IoError(#[from] std::io::Error),
     #[error("Failed to load file: {0}")]
-    LoadError(String)
+    LoadError(String),
 }
 
 pub type CalibrationResult<T> = Result<T, CalibrationError>;
 
 /// Structure to hold the camera calibration configuration information.
-/// 
+///
 /// All of these parameters are generated from a series of calibration images from a given webcam.
 /// This MUST be run in order to get the correct camera calibration to do AprilTag detection
-/// 
+///
 /// Reference: https://learnopencv.com/camera-calibration-using-opencv/
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CameraCalibration {
     /// The camera calibration matrix/Intrinsic camera matrix
-    /// 
+    ///
     /// Use the `projection()` to grab the equivalent projection matrix
     mtx: Vec<Vec<f32>>,
     /// The `dist` parameter from the camera calibration script.
-    /// 
+    ///
     /// Lens distortion coefficients. Basically whether there are pincushon (think concave) vs barrel (think convex) distortion effects
     dist: Vec<Vec<f32>>,
     /// Per image, the `rvec` or rotation vectors the checkerboard pattern is present.
-    /// 
-    /// Rotation specified as a 3×1 vector. The direction of the vector specifies the axis of rotation and the magnitude of the vector specifies the angle of rotation. 
+    ///
+    /// Rotation specified as a 3×1 vector. The direction of the vector specifies the axis of rotation and the magnitude of the vector specifies the angle of rotation.
     rvecs: Vec<Vec<Vec<f32>>>,
     /// Per image, the `tvec` or translation vectors the checkerboard pattern is present
-    /// 
+    ///
     /// 3×1 Translation vector.
     tvecs: Vec<Vec<Vec<f32>>>,
     /// Focal width in pixels for the camera.
@@ -52,7 +59,22 @@ pub struct CameraCalibration {
     /// Principle focal point of the camera in pixels
     cx: f32,
     /// Principle focal point of the camera in pixels
-    cy: f32
+    cy: f32,
+}
+
+impl Default for CameraCalibration {
+    fn default() -> Self {
+        Self {
+            mtx: vec![vec![]],
+            dist: vec![vec![]],
+            rvecs: vec![vec![vec![]]],
+            tvecs: vec![vec![vec![]]],
+            fx: 0.0,
+            fy: 0.0,
+            cx: 0.0,
+            cy: 0.0,
+        }
+    }
 }
 
 impl CameraCalibration {
@@ -61,10 +83,9 @@ impl CameraCalibration {
         let json_text = std::fs::read_to_string(path)?;
         match serde_json::from_str(&json_text) {
             Ok(v) => Ok(v),
-            Err(e) => Err(CalibrationError::LoadError(format!("{e}")))
+            Err(e) => Err(CalibrationError::LoadError(format!("{e}"))),
         }
     }
-    
 
     /// Principle focal point of the camera in pixels
     pub fn fx(&self) -> f32 {
@@ -88,7 +109,10 @@ impl CameraCalibration {
 
     /// Lens distortion coefficients. Basically whether there are pincushon (think concave) vs barrel (think convex) distortion effects
     pub fn dist(&self) -> Vec<f32> {
-        let dist_flattened: Vec<f32> = self.dist.iter().fold(vec![], |mut acc, v| { acc.extend(v.iter()); acc });
+        let dist_flattened: Vec<f32> = self.dist.iter().fold(vec![], |mut acc, v| {
+            acc.extend(v.iter());
+            acc
+        });
         dist_flattened
     }
 
@@ -97,9 +121,15 @@ impl CameraCalibration {
         let mut rvecs = vec![];
         for rvec in self.rvecs.iter() {
             // Fold elements into single vector
-            let folded: Vec<f32> = rvec.iter().fold(vec![], |mut acc, v| { acc.extend(v); acc });
+            let folded: Vec<f32> = rvec.iter().fold(vec![], |mut acc, v| {
+                acc.extend(v);
+                acc
+            });
             if folded.len() != 3 {
-                return Err(CalibrationError::ConversionError(format!("Incorrect number of elements for rvecs, got {} expected 3", folded.len())));
+                return Err(CalibrationError::ConversionError(format!(
+                    "Incorrect number of elements for rvecs, got {} expected 3",
+                    folded.len()
+                )));
             }
             let mat = Matrix3x1::from_row_slice(folded.as_slice());
             rvecs.push(mat);
@@ -108,21 +138,27 @@ impl CameraCalibration {
         Ok(rvecs)
     }
 
-        /// Returns the vector of tvecs as a Matrix3x1
-        pub fn tvecs(&self) -> CalibrationResult<Vec<Matrix3x1<f32>>> {
-            let mut tvecs = vec![];
-            for tvec in self.tvecs.iter() {
-                // Fold elements into single vector
-                let folded: Vec<f32> = tvec.iter().fold(vec![], |mut acc, v| { acc.extend(v); acc });
-                if folded.len() != 3 {
-                    return Err(CalibrationError::ConversionError(format!("Incorrect number of elements for tvecs, got {} expected 3", folded.len())));
-                }
-                let mat = Matrix3x1::from_row_slice(folded.as_slice());
-                tvecs.push(mat);
+    /// Returns the vector of tvecs as a Matrix3x1
+    pub fn tvecs(&self) -> CalibrationResult<Vec<Matrix3x1<f32>>> {
+        let mut tvecs = vec![];
+        for tvec in self.tvecs.iter() {
+            // Fold elements into single vector
+            let folded: Vec<f32> = tvec.iter().fold(vec![], |mut acc, v| {
+                acc.extend(v);
+                acc
+            });
+            if folded.len() != 3 {
+                return Err(CalibrationError::ConversionError(format!(
+                    "Incorrect number of elements for tvecs, got {} expected 3",
+                    folded.len()
+                )));
             }
-    
-            Ok(tvecs)
+            let mat = Matrix3x1::from_row_slice(folded.as_slice());
+            tvecs.push(mat);
         }
+
+        Ok(tvecs)
+    }
 
     /// Gets the equivalent projection matrix from `imageproc::geometric_transformations::Projection`
     pub fn projection_mtx(&self) -> CalibrationResult<Projection> {
@@ -133,17 +169,58 @@ impl CameraCalibration {
         let projection_arr: [f32; 9] = match flattened.try_into() {
             Ok(arr) => arr,
             Err(err) => {
-                return Err(CalibrationError::ConversionError(format!("Elements invalid: {err:?}")));
-            },
+                return Err(CalibrationError::ConversionError(format!(
+                    "Elements invalid: {err:?}"
+                )));
+            }
         };
 
-        Projection::from_matrix(projection_arr).ok_or_else(|| CalibrationError::ConversionError("Invalid projection matrix: not invertible".to_string()))
+        Projection::from_matrix(projection_arr).ok_or_else(|| {
+            CalibrationError::ConversionError(
+                "Invalid projection matrix: not invertible".to_string(),
+            )
+        })
+    }
+}
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+
+pub enum AprilTagFamily {
+    #[default]
+    Tag16H5,
+    Tag25H9,
+    Tag36H11,
+    TagCircle21H7,
+    TagCircle49h12,
+    TagStandard41h12,
+    TagStandard52h13,
+    TagCustom48h12,
+}
+
+impl From<AprilTagFamily> for Family {
+    fn from(value: AprilTagFamily) -> Self {
+        match value {
+            AprilTagFamily::Tag16H5 => "tag16h5".parse().unwrap(),
+            AprilTagFamily::Tag25H9 => "tag25h9".parse().unwrap(),
+            AprilTagFamily::Tag36H11 => "tag36h11".parse().unwrap(),
+            AprilTagFamily::TagCircle21H7 => "tagCircle21h7".parse().unwrap(),
+            AprilTagFamily::TagCircle49h12 => "tagCircle49h12".parse().unwrap(),
+            AprilTagFamily::TagStandard41h12 => "tagStandard41h12".parse().unwrap(),
+            AprilTagFamily::TagStandard52h13 => "tagStandard52h13".parse().unwrap(),
+            AprilTagFamily::TagCustom48h12 => "tagCustom48h12".parse().unwrap(),
+        }
     }
 }
 
-/// Contains all of the parameters needed to initialize the 
-#[derive(Debug)]
+/// Contains all of the parameters needed to initialize the
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DetectorParameters {
-    families: Vec<Family>,
+    families: Vec<AprilTagFamily>,
+}
 
+impl Default for DetectorParameters {
+    fn default() -> Self {
+        Self {
+            families: vec![AprilTagFamily::default()],
+        }
+    }
 }
