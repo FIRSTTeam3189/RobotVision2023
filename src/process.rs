@@ -94,8 +94,9 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
 
     let mut detector = detector.build().unwrap();
     detector.set_thread_number(8);
-    detector.set_decimation(16.0);
-    detector.set_shapening(8.0);
+    // detector.set_debug(true);
+    detector.set_decimation(parameters.cli.decimation);
+    detector.set_shapening(parameters.cli.sharpening);
     let tag_params = (&calibration).into();
 
     loop {
@@ -116,8 +117,9 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
             .iter()
             .filter_map(|x| {
                 if let Some(pose) = x.estimate_tag_pose(&tag_params) {
-                    let iso = pose.to_isometry();
+                    // let iso = pose.to_isometry();
                     let c = x.corners();
+                    let center = x.center();
 
                     let mut lx = c[0][0];
                     let mut hx = c[0][0];
@@ -132,10 +134,10 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
                         if corner[0] > hx {
                             hx = corner[0];
                         }
-                        if corner[0] < ly {
+                        if corner[1] < ly {
                             ly = corner[1];
                         }
-                        if corner[0] > hy {
+                        if corner[1] > hy {
                             hy = corner[1];
                         }
                     }

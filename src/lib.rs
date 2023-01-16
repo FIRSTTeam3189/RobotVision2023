@@ -10,6 +10,7 @@ use thiserror::Error;
 pub use image::{DynamicImage, RgbImage, RgbaImage};
 
 pub mod process;
+use clap::*;
 
 /// Errors pertaining to errors in reading/using camera calibration information
 #[derive(Error, Debug)]
@@ -228,17 +229,27 @@ impl From<&AprilTagFamily> for Family {
         }
     }
 }
+#[derive(Parser, Debug, Deserialize, Serialize, Clone, Default)]
+#[command(author, version, about, long_about = None)]
+struct Cli{
+    #[arg(short = 's', long, default_value_t = 8.0)]
+    sharpening: f64,
+    #[arg(short = 'd', long, default_value_t = 16.0)]
+    decimation: f32,
+}
 
 /// Contains all of the parameters needed to initialize the
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DetectorParameters {
     families: Vec<AprilTagFamily>,
+    #[serde(skip, default = "Cli::parse")]
+    cli: Cli,
 }
 
 impl Default for DetectorParameters {
     fn default() -> Self {
         Self {
-            families: vec![AprilTagFamily::default()],
+            families: vec![AprilTagFamily::default()], cli: Cli::parse(),
         }
     }
 }
