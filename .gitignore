@@ -2,4 +2,7 @@
 /images
 Cargo.lock
 cam-cal.json
-test-img/
+test-img
+ap-images
+*.ps
+*.pnm

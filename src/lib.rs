@@ -1,17 +1,15 @@
 use std::path::Path;
 
-use apriltag::Family;
+use apriltag::{Family, TagParams};
 use image::{ImageBuffer, Rgba};
 use imageproc::geometric_transformations::Projection;
 use nalgebra::Matrix3x1;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub mod process;
+pub use image::{DynamicImage, RgbImage, RgbaImage};
 
-/// The type of image being targeted for processing.
-/// This ends up being a RGBA (32-bits/pixel) image per camera frame read
-pub type ImgBuf = ImageBuffer<Rgba<u8>, Vec<u8>>;
+pub mod process;
 
 /// Errors pertaining to errors in reading/using camera calibration information
 #[derive(Error, Debug)]
@@ -37,29 +35,31 @@ pub struct CameraCalibration {
     /// The camera calibration matrix/Intrinsic camera matrix
     ///
     /// Use the `projection()` to grab the equivalent projection matrix
-    mtx: Vec<Vec<f32>>,
+    mtx: Vec<Vec<f64>>,
     /// The `dist` parameter from the camera calibration script.
     ///
     /// Lens distortion coefficients. Basically whether there are pincushon (think concave) vs barrel (think convex) distortion effects
-    dist: Vec<Vec<f32>>,
+    dist: Vec<Vec<f64>>,
     /// Per image, the `rvec` or rotation vectors the checkerboard pattern is present.
     ///
     /// Rotation specified as a 3×1 vector. The direction of the vector specifies the axis of rotation and the magnitude of the vector specifies the angle of rotation.
-    rvecs: Vec<Vec<Vec<f32>>>,
+    rvecs: Vec<Vec<Vec<f64>>>,
     /// Per image, the `tvec` or translation vectors the checkerboard pattern is present
     ///
     /// 3×1 Translation vector.
-    tvecs: Vec<Vec<Vec<f32>>>,
+    tvecs: Vec<Vec<Vec<f64>>>,
     /// Focal width in pixels for the camera.
     /// Directly used in the AprilTag detection
-    fx: f32,
+    fx: f64,
     /// Focal height in pixels for the camera.
     /// Directly used in the AprilTag detection.
-    fy: f32,
+    fy: f64,
     /// Principle focal point of the camera in pixels
-    cx: f32,
+    cx: f64,
     /// Principle focal point of the camera in pixels
-    cy: f32,
+    cy: f64,
+    /// The size of the april tags, in meters
+    tagsize: f64,
 }
 
 impl Default for CameraCalibration {
@@ -73,6 +73,7 @@ impl Default for CameraCalibration {
             fy: 0.0,
             cx: 0.0,
             cy: 0.0,
+            tagsize: 0.0,
         }
     }
 }
@@ -88,28 +89,39 @@ impl CameraCalibration {
     }
 
     /// Principle focal point of the camera in pixels
-    pub fn fx(&self) -> f32 {
+    pub fn fx(&self) -> f64 {
         self.fx
     }
 
     /// Principle focal point of the camera in pixels
-    pub fn fy(&self) -> f32 {
+    pub fn fy(&self) -> f64 {
         self.fy
     }
 
     /// Focal width in pixels for the camera
-    pub fn cx(&self) -> f32 {
+    pub fn cx(&self) -> f64 {
         self.cx
     }
 
     /// Focal height in pixels for the camera
-    pub fn cy(&self) -> f32 {
+    pub fn cy(&self) -> f64 {
         self.cy
     }
 
+    /// Creates a tag params struct from given calibration
+    pub fn tag_params(&self) -> TagParams {
+        TagParams {
+            cx: self.cx,
+            cy: self.cy,
+            fx: self.fx,
+            fy: self.fy,
+            tagsize: self.tagsize,
+        }
+    }
+
     /// Lens distortion coefficients. Basically whether there are pincushon (think concave) vs barrel (think convex) distortion effects
-    pub fn dist(&self) -> Vec<f32> {
-        let dist_flattened: Vec<f32> = self.dist.iter().fold(vec![], |mut acc, v| {
+    pub fn dist(&self) -> Vec<f64> {
+        let dist_flattened: Vec<f64> = self.dist.iter().fold(vec![], |mut acc, v| {
             acc.extend(v.iter());
             acc
         });
@@ -117,11 +129,11 @@ impl CameraCalibration {
     }
 
     /// Returns the vector of rvecs as a Matrix3x1
-    pub fn rvecs(&self) -> CalibrationResult<Vec<Matrix3x1<f32>>> {
+    pub fn rvecs(&self) -> CalibrationResult<Vec<Matrix3x1<f64>>> {
         let mut rvecs = vec![];
         for rvec in self.rvecs.iter() {
             // Fold elements into single vector
-            let folded: Vec<f32> = rvec.iter().fold(vec![], |mut acc, v| {
+            let folded: Vec<f64> = rvec.iter().fold(vec![], |mut acc, v| {
                 acc.extend(v);
                 acc
             });
@@ -139,11 +151,11 @@ impl CameraCalibration {
     }
 
     /// Returns the vector of tvecs as a Matrix3x1
-    pub fn tvecs(&self) -> CalibrationResult<Vec<Matrix3x1<f32>>> {
+    pub fn tvecs(&self) -> CalibrationResult<Vec<Matrix3x1<f64>>> {
         let mut tvecs = vec![];
         for tvec in self.tvecs.iter() {
             // Fold elements into single vector
-            let folded: Vec<f32> = tvec.iter().fold(vec![], |mut acc, v| {
+            let folded: Vec<f64> = tvec.iter().fold(vec![], |mut acc, v| {
                 acc.extend(v);
                 acc
             });
@@ -163,7 +175,7 @@ impl CameraCalibration {
     /// Gets the equivalent projection matrix from `imageproc::geometric_transformations::Projection`
     pub fn projection_mtx(&self) -> CalibrationResult<Projection> {
         let flattened: Vec<f32> = self.mtx.as_slice().iter().fold(vec![], |mut acc, v| {
-            acc.extend(v.iter());
+            acc.extend(v.iter().map(|b| *b as f32));
             acc
         });
         let projection_arr: [f32; 9] = match flattened.try_into() {
@@ -182,8 +194,14 @@ impl CameraCalibration {
         })
     }
 }
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 
+impl From<&CameraCalibration> for TagParams {
+    fn from(value: &CameraCalibration) -> Self {
+        value.tag_params()
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub enum AprilTagFamily {
     #[default]
     Tag16H5,

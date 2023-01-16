@@ -1,13 +1,9 @@
-use crate::{CalibrationError, CameraCalibration, DetectorParameters, ImgBuf};
-use apriltag::{Detector, DetectorBuilder};
-use image::{imageops, Rgba};
+use crate::{CalibrationError, CameraCalibration, DetectorParameters, RgbaImage};
+use apriltag::DetectorBuilder;
+use crossbeam_channel::{Receiver, RecvError, SendError, Sender};
+use image::{imageops, DynamicImage, Frame, Rgba};
 use imageproc::{self, rect::Rect};
-use std::{
-    path::Path,
-    sync::mpsc::{Receiver, RecvError, SendError, Sender},
-    thread,
-    thread::JoinHandle,
-};
+use std::{env, path::Path, thread, thread::JoinHandle};
 
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -23,22 +19,22 @@ pub enum ProcessError {
     #[error("Receive error: {0}")]
     Receive(#[from] RecvError),
     #[error("Send error: {0}")]
-    Send(#[from] SendError<ImgBuf>),
+    Send(#[from] SendError<RgbaImage>),
 }
 
 pub type ProcessResult<T> = Result<T, ProcessError>;
 pub struct Processing {
-    image_rx: Receiver<ImgBuf>,
+    image_rx: Receiver<DynamicImage>,
     calibration: CameraCalibration,
     parameters: DetectorParameters,
-    sender: Sender<ImgBuf>,
+    sender: Sender<RgbaImage>,
 }
 
 impl Processing {
-    const CAMERA_CAL_FILE_NAME: &str = "camera.cal.config";
-    const DETECTOR_PERAMS_FILE_NAME: &str = "process.config";
+    const CAMERA_CAL_FILE_NAME: &str = "cam-cal.json";
+    const DETECTOR_PERAMS_FILE_NAME: &str = "process.toml";
 
-    pub fn new(image_rx: Receiver<ImgBuf>, sender: Sender<ImgBuf>) -> Self {
+    pub fn new(image_rx: Receiver<DynamicImage>, sender: Sender<RgbaImage>) -> Self {
         Self {
             image_rx,
             sender,
@@ -48,14 +44,16 @@ impl Processing {
     }
 
     pub fn load<T: AsRef<Path>>(
-        image_rx: Receiver<ImgBuf>,
-        sender: Sender<ImgBuf>,
+        image_rx: Receiver<DynamicImage>,
+        sender: Sender<RgbaImage>,
         path: T,
     ) -> ProcessResult<Self> {
         // Create Paths to config files
         let path = path.as_ref();
         let cal_path = path.join(Self::CAMERA_CAL_FILE_NAME);
+        println!("loaded Calibration from: {}", cal_path.display());
         let detect_path = path.join(Self::DETECTOR_PERAMS_FILE_NAME);
+        println!("loaded Detector Parameters from: {}", detect_path.display());
 
         // Contents of the files
         let cal_contents = std::fs::read_to_string(cal_path)?;
@@ -94,16 +92,80 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
         .iter()
         .fold(detector, |d, f| d.add_family_bits(f.into(), 1));
 
-    let detector = detector.build().unwrap();
+    let mut detector = detector.build().unwrap();
+    detector.set_thread_number(8);
+    detector.set_decimation(16.0);
+    detector.set_shapening(8.0);
+    let tag_params = (&calibration).into();
 
     loop {
+        // `image` is a dynamic image.
+        // `grayscale` is the image sent to the AprilTag detector to find tags
+        // `frame` is used as a display for the UI.
         let image = image_rx.recv()?;
-        // Convert to grayscale image
-        let grayscale: ImgBuf = imageops::grayscale_with_type(&image);
+        let grayscale = image.to_luma8();
+        let mut frame = image.into_rgba8();
+
+        // let lumaImage = DynamicImage::ImageRgba8(grayscale).into_luma8();
 
         // Do the actuall proccessing here
+        let detections = detector.detect(grayscale);
 
-        sender.send(grayscale)?;
+        println!("thingy: {detections:?}");
+        let rects: Vec<Rect> = detections
+            .iter()
+            .filter_map(|x| {
+                if let Some(pose) = x.estimate_tag_pose(&tag_params) {
+                    let iso = pose.to_isometry();
+                    let c = x.corners();
+
+                    let mut lx = c[0][0];
+                    let mut hx = c[0][0];
+
+                    let mut ly = c[0][1];
+                    let mut hy = c[0][1];
+
+                    for corner in c {
+                        if corner[0] < lx {
+                            lx = corner[0];
+                        }
+                        if corner[0] > hx {
+                            hx = corner[0];
+                        }
+                        if corner[0] < ly {
+                            ly = corner[1];
+                        }
+                        if corner[0] > hy {
+                            hy = corner[1];
+                        }
+                    }
+
+                    if hx <= lx || hy <= ly {
+                        None
+                    } else {
+                        Some(Rect::at(lx as i32, ly as i32).of_size(hx as u32, hy as u32))
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for rect in rects {
+            // println!("{rect:?}");
+            frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);
+        }
+
+        match sender.try_send(frame) {
+            Ok(_) => {}
+            Err(crossbeam_channel::TrySendError::Full(_)) => {
+                println!("UI Thread is busy, skipping frame...")
+            }
+            Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
+                println!("UI Thread disconnected! Breaking loop...");
+                break;
+            }
+        }
     }
 
     Ok(())

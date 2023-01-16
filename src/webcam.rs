@@ -1,21 +1,21 @@
+use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use parking_lot::Mutex;
-use std::sync::mpsc::{channel, Receiver, Sender};
 
 use eframe::egui;
 use egui::{ColorImage, TextureHandle};
 use image::{imageops, ImageBuffer, Rgba};
 use nokhwa::{
-    pixel_format::RgbAFormat,
+    pixel_format::{LumaFormat, RgbAFormat},
     threaded::CallbackCamera,
     utils::{CameraIndex, RequestedFormat, RequestedFormatType},
     Buffer,
 };
 use once_cell::sync::OnceCell;
-use std::sync::Arc;
-use vision::{process::Processing, ImgBuf};
+use std::{env, sync::Arc};
+use vision::{process::Processing, DetectorParameters, DynamicImage, RgbaImage};
 
 /// The channel on which frames are sent to the GUI
-static IMAGE_SENDER: OnceCell<Arc<Mutex<Sender<ImgBuf>>>> = OnceCell::new();
+static IMAGE_SENDER: OnceCell<Arc<Mutex<Sender<DynamicImage>>>> = OnceCell::new();
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Uncomment to list available cameras on the system
@@ -23,9 +23,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let cameras = query(ApiBackend::Auto).unwrap();
     // cameras.iter().for_each(|cam| println!("{:?}", cam));
 
+    // let test = DetectorParameters::default();
+    // std::fs::write("test.toml", toml::to_vec(&test)?)?;
     // Create sender/receiver
-    let (tx, rx) = channel();
-    let (process_tx, process_rx) = channel();
+    let (tx, rx) = bounded(1);
+    let (process_tx, process_rx) = bounded(1);
     IMAGE_SENDER.set(Arc::new(Mutex::new(tx))).unwrap();
 
     // Initialize camera, request the highest possible framerate
@@ -34,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut camera = CallbackCamera::new(CameraIndex::Index(1), format, callback).unwrap();
 
     //Start processing thread
-    let process = Processing::new(rx, process_tx);
+    let process = Processing::load(rx, process_tx, env::current_dir()?)?;
     let handle = process.start();
 
     // Open camera stream, start GUI then when GUI exits, close the stream
@@ -53,11 +55,18 @@ fn callback(image: Buffer) {
     // Get a lock to the image sender
     let tx = IMAGE_SENDER.get().unwrap().lock();
     // Decode the image as RGBA from the webcam
-    match image.decode_image::<RgbAFormat>() {
+    match image.decode_image::<LumaFormat>() {
         Ok(frame) => {
             // Ship it off to the UI
-            if let Err(e) = tx.send(frame) {
-                println!("Failed to send frame: {e}");
+            let dynamic_image = DynamicImage::from(frame);
+            match tx.try_send(dynamic_image) {
+                Ok(_) => {}
+                Err(TrySendError::Full(_)) => {
+                    println!("Processing busy, dropping frame...");
+                }
+                Err(TrySendError::Disconnected(_)) => {
+                    println!("Failed to send frame -- disconnected.");
+                }
             }
         }
         Err(e) => {
@@ -70,14 +79,14 @@ fn callback(image: Buffer) {
 pub struct WebcamApp {
     image: Option<ColorImage>,
     texture: Option<TextureHandle>,
-    image_receiver: Receiver<ImgBuf>,
+    image_receiver: Receiver<RgbaImage>,
     count: usize,
     frames_recved: usize,
 }
 
 impl WebcamApp {
     /// Creates a new instance of the webcam feed. This takes in the receiver the webcam frames will be received on.
-    pub fn new(image_receiver: Receiver<ImgBuf>) -> WebcamApp {
+    pub fn new(image_receiver: Receiver<RgbaImage>) -> WebcamApp {
         WebcamApp {
             image: None,
             texture: None,
@@ -114,11 +123,15 @@ impl eframe::App for WebcamApp {
             // Increment Frames received
             self.frames_recved += 1;
             if self.frames_recved % 60 == 0 {
-                let _path = format!("./image-{}.jpg", self.count);
                 self.count += 1;
+
                 #[cfg(feature = "save-pix")]
-                if let Err(e) = frame.save(_path) {
-                    println!("Failed to save image: {e}");
+                {
+                    let path = format!("./image-{}.jpg", self.count);
+                    let grayscale_frame = DynamicImage::from(frame.clone()).into_luma8();
+                    if let Err(e) = grayscale_frame.save(path) {
+                        println!("Failed to save image: {e}");
+                    }
                 }
                 #[cfg(not(feature = "save-pix"))]
                 println!("{} frames received", 60 * self.count)

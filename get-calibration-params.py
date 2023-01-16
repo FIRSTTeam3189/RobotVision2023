@@ -39,7 +39,7 @@ objp[0, :, :2] = np.mgrid[0:CHECKERBOARD[0],
 prev_img_shape = None
 
 # Extracting path of individual image stored in a given directory
-images = glob.glob('./test-img/*.jpg')
+images = glob.glob('./images/*.jpg')
 for fname in images:
     img = cv2.imread(fname)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -91,7 +91,9 @@ print(tvecs)
 
 # Save the values to a JSON file
 fx, fy, cx, cy = mtx[0][0], mtx[1][1], mtx[0][2], mtx[1][2]
-cam_cal = { 'mtx': mtx, 'dist': dist, 'rvecs': rvecs, 'tvecs': tvecs, 'fx': fx, 'fy': fy, 'cx': cx, 'cy': cy }
+# Add in tagsize as well -- 6 in to meters (0.1524)
+tagsize = 0.1524 
+cam_cal = { 'mtx': mtx, 'dist': dist, 'rvecs': rvecs, 'tvecs': tvecs, 'fx': fx, 'fy': fy, 'cx': cx, 'cy': cy, 'tagsize': tagsize }
 path = Path('cam-cal.json')
 
 with path.open('w') as f:

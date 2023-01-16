@@ -39,6 +39,9 @@ thiserror = "1.0"
 # Parking Lot for Mutexes without Poisoning
 parking_lot = "0.12"
 
+# Crossbeam-channels for best performance
+crossbeam-channel = "0.5"
+
 [dependencies.nokhwa]
 #git = "https://github.com/l1npengtul/nokhwa"
 #branch = "senpai"
