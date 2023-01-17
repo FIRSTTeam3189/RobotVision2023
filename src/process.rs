@@ -124,7 +124,7 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
         let rects: Vec<Rect> = detections
             .iter()
             .filter_map(|x| {
-                println!("\t-{x:?}");
+                // println!("\t-{x:?}");
                 if let Some(pose) = x.estimate_tag_pose(&tag_params) {
                     let c = x.corners();
                     let center = x.center();
@@ -150,12 +150,11 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
                         }
                     }
 
-                    if hx <= lx || hy <= ly || x.decision_margin() < 1000.0 {
+                    if /*   hx <= lx || hy <= ly || */ x.decision_margin() < 1000.0 {
                         None
                     } else {
                         hx = (hx - center[0]) * 2.0;
                         hy = (hy - center[1]) * 2.0;
-                        println!("{lx}, {ly}");
                         Some(Rect::at(lx as i32, ly as i32).of_size(hx as u32, hy as u32))
                     }
                 } else {
