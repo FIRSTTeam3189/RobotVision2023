@@ -52,6 +52,7 @@ features = ["input-native", "output-threaded"]
 [features]
 default = ["gui"]
 gui = ["egui", "eframe", "egui_extras"]
+save-pix = []
 
 
 [[bin]]

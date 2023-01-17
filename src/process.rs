@@ -1,9 +1,9 @@
 use crate::{CalibrationError, CameraCalibration, DetectorParameters, RgbaImage};
 use apriltag::DetectorBuilder;
 use crossbeam_channel::{Receiver, RecvError, SendError, Sender};
-use image::{imageops, DynamicImage, Frame, Rgba};
-use imageproc::{self, rect::Rect};
-use std::{env, path::Path, thread, thread::JoinHandle};
+use image::{imageops::{self, grayscale}, DynamicImage, Frame, Rgba};
+use imageproc::{self, rect::Rect, contrast::threshold_mut};
+use std::{env, path::Path, thread, thread::JoinHandle, vec};
 
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -97,6 +97,17 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
     // detector.set_debug(true);
     detector.set_decimation(parameters.cli.decimation);
     detector.set_shapening(parameters.cli.sharpening);
+    detector.set_refine_edges(false);
+    detector.set_sigma(0.0);
+    detector.set_thresholds(apriltag::detector::QuadThresholds { 
+        min_cluster_pixels: (5),
+        max_maxima_number: (10),
+        min_angle: (apriltag::Angle::accept_all_candidates()),
+        min_opposite_angle: (apriltag::Angle::from_degrees(360.0)),
+        max_mse: (10.0), 
+        min_white_black_diff: (5), 
+        deglitch: (false) 
+    });
     let tag_params = (&calibration).into();
 
     loop {
@@ -107,17 +118,14 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
         let grayscale = image.to_luma8();
         let mut frame = image.into_rgba8();
 
-        // let lumaImage = DynamicImage::ImageRgba8(grayscale).into_luma8();
-
-        // Do the actuall proccessing here
+        // Do the actual proccessing here
         let detections = detector.detect(grayscale);
-
-        println!("thingy: {detections:?}");
+        // println!("thingy: {detections:?}");
         let rects: Vec<Rect> = detections
             .iter()
             .filter_map(|x| {
+                println!("\t-{x:?}");
                 if let Some(pose) = x.estimate_tag_pose(&tag_params) {
-                    // let iso = pose.to_isometry();
                     let c = x.corners();
                     let center = x.center();
 
@@ -142,9 +150,12 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
                         }
                     }
 
-                    if hx <= lx || hy <= ly {
+                    if hx <= lx || hy <= ly || x.decision_margin() < 1000.0 {
                         None
                     } else {
+                        hx = (hx - center[0]) * 2.0;
+                        hy = (hy - center[1]) * 2.0;
+                        println!("{lx}, {ly}");
                         Some(Rect::at(lx as i32, ly as i32).of_size(hx as u32, hy as u32))
                     }
                 } else {

@@ -127,7 +127,7 @@ impl eframe::App for WebcamApp {
 
                 #[cfg(feature = "save-pix")]
                 {
-                    let path = format!("./image-{}.jpg", self.count);
+                    let path = format!("./images/image-{}.jpg", self.count);
                     let grayscale_frame = DynamicImage::from(frame.clone()).into_luma8();
                     if let Err(e) = grayscale_frame.save(path) {
                         println!("Failed to save image: {e}");

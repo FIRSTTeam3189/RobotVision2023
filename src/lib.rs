@@ -242,7 +242,6 @@ struct Cli{
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DetectorParameters {
     families: Vec<AprilTagFamily>,
-    #[serde(skip, default = "Cli::parse")]
     cli: Cli,
 }
 
