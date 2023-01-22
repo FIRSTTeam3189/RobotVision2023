@@ -54,6 +54,8 @@ default = []
 gui = ["egui", "eframe", "egui_extras"]
 save-pix = []
 
+[profile.release]
+lto = true
 
 [[bin]]
 name = "webcam"

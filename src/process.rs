@@ -1,9 +1,10 @@
 use crate::{CalibrationError, CameraCalibration, DetectorParameters, RgbaImage};
-use apriltag::DetectorBuilder;
+use apriltag::{DetectorBuilder, Detector};
 use crossbeam_channel::{Receiver, RecvError, SendError, Sender};
-use image::{imageops::{self, grayscale}, DynamicImage, Frame, Rgba};
-use imageproc::{self, rect::Rect, contrast::threshold_mut};
-use std::{env, path::Path, thread, thread::JoinHandle, vec};
+use image::{DynamicImage, Rgba, Pixel, Luma, ImageBuffer};
+use imageproc::{self, rect::Rect, definitions::{HasWhite, HasBlack}, morphology, distance_transform::Norm, contours, geometry};
+
+use std::{path::Path, thread::{self}, thread::JoinHandle};
 
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -78,36 +79,20 @@ impl Processing {
 }
 
 fn process_thread(params: Processing) -> ProcessResult<()> {
-    let mut image_rx = params.image_rx;
+    const ARC_LENGTH_MIN: f64 = 20.0;
+    const ASPECT_RATIO_MAX: f64 = 5.0;
+    const ASPECT_RATIO_MIN: f64 = 3.0;
+
+    let image_rx = params.image_rx;
     let calibration = params.calibration;
     let parameters = params.parameters;
     let sender = params.sender;
 
     let blue = Rgba([0u8, 0u8, 255u8, 255u8]);
-    let rectangle = Rect::at(130, 10).of_size(200, 200);
+    // let rectangle = Rect::at(130, 10).of_size(200, 200);
 
-    let detector = DetectorBuilder::new();
-    let detector = parameters
-        .families
-        .iter()
-        .fold(detector, |d, f| d.add_family_bits(f.into(), 1));
+    let mut detector = detector_creator(parameters);
 
-    let mut detector = detector.build().unwrap();
-    detector.set_thread_number(8);
-    // detector.set_debug(true);
-    detector.set_decimation(parameters.cli.decimation);
-    detector.set_shapening(parameters.cli.sharpening);
-    detector.set_refine_edges(false);
-    detector.set_sigma(0.0);
-    detector.set_thresholds(apriltag::detector::QuadThresholds { 
-        min_cluster_pixels: (5),
-        max_maxima_number: (10),
-        min_angle: (apriltag::Angle::accept_all_candidates()),
-        min_opposite_angle: (apriltag::Angle::from_degrees(360.0)),
-        max_mse: (10.0), 
-        min_white_black_diff: (5), 
-        deglitch: (false) 
-    });
     let tag_params = (&calibration).into();
 
     loop {
@@ -118,14 +103,18 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
         let grayscale = image.to_luma8();
         let mut frame = image.into_rgba8();
 
+        // Color boundaries
+        let rb = vec![150u8, 255u8];
+        let gb = vec![150u8, 255u8];
+        let bb = vec![150u8, 255u8];
+
         // Do the actual proccessing here
-        let detections = detector.detect(grayscale);
+        let detections =  detector.detect(grayscale);
         // println!("thingy: {detections:?}");
         let rects: Vec<Rect> = detections
             .iter()
             .filter_map(|x| {
-                // println!("\t-{x:?}");
-                if let Some(pose) = x.estimate_tag_pose(&tag_params) {
+                if let Some(_pose) = x.estimate_tag_pose(&tag_params) {
                     let c = x.corners();
                     let center = x.center();
 
@@ -150,7 +139,7 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
                         }
                     }
 
-                    if /*   hx <= lx || hy <= ly || */ x.decision_margin() < 1000.0 {
+                    if hx <= lx || hy <= ly || x.decision_margin() < 1100.0 {
                         None
                     } else {
                         hx = (hx - center[0]) * 2.0;
@@ -163,8 +152,22 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
             })
             .collect();
 
+            let mut mask_p = mask_maker(&frame, rb, gb, bb);
+            morphology::open_mut(&mut mask_p, Norm::L1, 2);
+            let found_contours = contours::find_contours::<u8>(&mask_p);
+            let mut accepted_contours: Vec<contours::Contour<u8>> = Vec::new();
+            for contour in found_contours {
+                if geometry::arc_length(contour.points.as_slice(), true) > ARC_LENGTH_MIN {
+                    let min_area = geometry::min_area_rect(contour.points.as_slice());
+                    // min_area set as: [top left, top right, bottom right, bottom left]
+                    let aspect_ratio: f64 = ((min_area[1].x - min_area[0].x) as f64)/((min_area[0].y - min_area[3].y) as f64);
+                    if ASPECT_RATIO_MIN < aspect_ratio && aspect_ratio < ASPECT_RATIO_MAX {
+                        accepted_contours.push(contour);
+                    }
+                }
+            }
+
         for rect in rects {
-            // println!("{rect:?}");
             frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);
         }
 
@@ -181,4 +184,42 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
     }
 
     Ok(())
+}
+
+fn detector_creator(parameters: DetectorParameters) -> Detector {
+    let detector = DetectorBuilder::new();
+    let detector = parameters
+        .families
+        .iter()
+        .fold(detector, |d, f| d.add_family_bits(f.into(), 1)
+    );
+
+    let mut detector = detector.build().unwrap();
+    detector.set_thread_number(8);
+    // detector.set_debug(true);
+    detector.set_decimation(parameters.cli.decimation);
+    detector.set_shapening(parameters.cli.sharpening);
+    detector.set_refine_edges(false);
+    detector.set_sigma(0.0);
+    detector.set_thresholds(apriltag::detector::QuadThresholds { 
+        min_cluster_pixels: (5),
+        max_maxima_number: (10),
+        min_angle: (apriltag::Angle::accept_all_candidates()),
+        min_opposite_angle: (apriltag::Angle::from_degrees(360.0)),
+        max_mse: (10.0), 
+        min_white_black_diff: (5), 
+        deglitch: (false) 
+    });
+
+    detector
+}
+
+fn mask_maker(frame: &ImageBuffer<Rgba<u8>, Vec<u8>>, rb: Vec<u8>, gb: Vec<u8>, bb: Vec<u8>) -> ImageBuffer<Luma<u8>, Vec<u8>> {
+    let mut mask_p = ImageBuffer::from_pixel(frame.width(), frame.height(), Luma::<u8>::black());
+        frame.enumerate_pixels().for_each(|(x, y, p)| {
+            if p.to_rgb()[0] < rb[1] && p.to_rgb()[0] > rb[0] && p.to_rgb()[1] < gb[1] && p.to_rgb()[1] > gb[0] && p.to_rgb()[2] < bb[1] && p.to_rgb()[2] > bb[0] {
+                mask_p.put_pixel(x, y, Luma::<u8>::white()); 
+            }
+       });
+    mask_p
 }
