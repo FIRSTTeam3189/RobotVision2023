@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use apriltag::{Family, TagParams};
-use image::{ImageBuffer, Rgba};
 use imageproc::geometric_transformations::Projection;
 use nalgebra::Matrix3x1;
 use serde::{Deserialize, Serialize};
@@ -233,7 +232,7 @@ impl From<&AprilTagFamily> for Family {
 #[command(author, version, about, long_about = None)]
 struct Cli{
     #[arg(short = 's', long, default_value_t = 8.0)]
-    sharpening: f64,
+    shapening: f64,
     #[arg(short = 'd', long, default_value_t = 16.0)]
     decimation: f32,
 }

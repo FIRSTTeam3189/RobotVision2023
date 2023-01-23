@@ -80,8 +80,8 @@ impl Processing {
 
 fn process_thread(params: Processing) -> ProcessResult<()> {
     const ARC_LENGTH_MIN: f64 = 20.0;
-    const ASPECT_RATIO_MAX: f64 = 5.0;
-    const ASPECT_RATIO_MIN: f64 = 3.0;
+    const ASPECT_RATIO_MAX: f64 = 1.0;
+    const ASPECT_RATIO_MIN: f64 = 0.20;
 
     let image_rx = params.image_rx;
     let calibration = params.calibration;
@@ -104,9 +104,9 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
         let mut frame = image.into_rgba8();
 
         // Color boundaries
-        let rb = vec![150u8, 255u8];
-        let gb = vec![150u8, 255u8];
-        let bb = vec![150u8, 255u8];
+        let rb = vec![200u8, 255u8];
+        let gb = vec![200u8, 255u8];
+        let bb = vec![200u8, 255u8];
 
         // Do the actual proccessing here
         let detections =  detector.detect(grayscale);
@@ -151,27 +151,29 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
                 }
             })
             .collect();
-
-            let mut mask_p = mask_maker(&frame, rb, gb, bb);
-            morphology::open_mut(&mut mask_p, Norm::L1, 2);
-            let found_contours = contours::find_contours::<u8>(&mask_p);
-            let mut accepted_contours: Vec<contours::Contour<u8>> = Vec::new();
-            for contour in found_contours {
-                if geometry::arc_length(contour.points.as_slice(), true) > ARC_LENGTH_MIN {
-                    let min_area = geometry::min_area_rect(contour.points.as_slice());
-                    // min_area set as: [top left, top right, bottom right, bottom left]
-                    let aspect_ratio: f64 = ((min_area[1].x - min_area[0].x) as f64)/((min_area[0].y - min_area[3].y) as f64);
-                    if ASPECT_RATIO_MIN < aspect_ratio && aspect_ratio < ASPECT_RATIO_MAX {
-                        accepted_contours.push(contour);
-                    }
-                }
-            }
-
+        
         for rect in rects {
             frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);
         }
 
-        match sender.try_send(frame) {
+        let mut mask_p = mask_maker(&frame, rb, gb, bb);
+        morphology::open_mut(&mut mask_p, Norm::L1, 2);
+        let found_contours = contours::find_contours::<i32>(&mask_p);
+        let mut accepted_contours: Vec<contours::Contour<i32>> = Vec::new();
+        for contour in found_contours {
+            if geometry::arc_length(contour.points.as_slice(), true) > ARC_LENGTH_MIN {
+                let min_area = geometry::min_area_rect(contour.points.as_slice());
+                // min_area set as: [top left, top right, bottom right, bottom left]
+                let aspect_ratio = ((min_area[0].x - min_area[1].x) as f64)/((min_area[0].y - min_area[3].y) as f64);
+                println!("{}", aspect_ratio);
+                if ASPECT_RATIO_MIN < aspect_ratio && aspect_ratio < ASPECT_RATIO_MAX {
+                    println!("It works horraaaaayyyyyyyy");
+                    accepted_contours.push(contour);
+                }
+            }
+        }
+
+        match sender.try_send(DynamicImage::from(mask_p).to_rgba8()) {
             Ok(_) => {}
             Err(crossbeam_channel::TrySendError::Full(_)) => {
                 println!("UI Thread is busy, skipping frame...")
@@ -198,7 +200,7 @@ fn detector_creator(parameters: DetectorParameters) -> Detector {
     detector.set_thread_number(8);
     // detector.set_debug(true);
     detector.set_decimation(parameters.cli.decimation);
-    detector.set_shapening(parameters.cli.sharpening);
+    detector.set_shapening(parameters.cli.shapening);
     detector.set_refine_edges(false);
     detector.set_sigma(0.0);
     detector.set_thresholds(apriltag::detector::QuadThresholds { 

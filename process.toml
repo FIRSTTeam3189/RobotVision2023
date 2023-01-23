@@ -1,4 +1,4 @@
 families = ["Tag16H5"]
 [cli]
-sharpening = 5.0
+shapening = 5.0
 decimation = 5.0
