@@ -42,6 +42,7 @@ parking_lot = "0.12"
 
 # Crossbeam-channels for best performance
 crossbeam-channel = "0.5"
+nt = "3.0.0"
 
 [dependencies.nokhwa]
 #git = "https://github.com/l1npengtul/nokhwa"

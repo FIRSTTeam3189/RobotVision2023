@@ -9,6 +9,7 @@ use thiserror::Error;
 pub use image::{DynamicImage, RgbImage, RgbaImage};
 
 pub mod process;
+pub mod networktable;
 use clap::*;
 
 /// Errors pertaining to errors in reading/using camera calibration information

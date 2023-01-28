@@ -104,13 +104,12 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
         let mut frame = image.into_rgba8();
 
         // Color boundaries
-        let rb = vec![200u8, 255u8];
-        let gb = vec![200u8, 255u8];
-        let bb = vec![200u8, 255u8];
+        let rb = vec![240u8, 255u8];
+        let gb = vec![240u8, 255u8];
+        let bb = vec![240u8, 255u8];
 
         // Do the actual proccessing here
         let detections =  detector.detect(grayscale);
-        // println!("thingy: {detections:?}");
         let rects: Vec<Rect> = detections
             .iter()
             .filter_map(|x| {
@@ -173,7 +172,7 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
             }
         }
 
-        match sender.try_send(DynamicImage::from(mask_p).to_rgba8()) {
+        match sender.try_send(frame/*DynamicImage::from(mask_p).to_rgba8()*/) {
             Ok(_) => {}
             Err(crossbeam_channel::TrySendError::Full(_)) => {
                 println!("UI Thread is busy, skipping frame...")
@@ -220,6 +219,7 @@ fn mask_maker(frame: &ImageBuffer<Rgba<u8>, Vec<u8>>, rb: Vec<u8>, gb: Vec<u8>, 
     let mut mask_p = ImageBuffer::from_pixel(frame.width(), frame.height(), Luma::<u8>::black());
         frame.enumerate_pixels().for_each(|(x, y, p)| {
             if p.to_rgb()[0] < rb[1] && p.to_rgb()[0] > rb[0] && p.to_rgb()[1] < gb[1] && p.to_rgb()[1] > gb[0] && p.to_rgb()[2] < bb[1] && p.to_rgb()[2] > bb[0] {
+                // println!("{}, {}, {}", p.to_rgb()[0], p.to_rgb()[1], p.to_rgb()[2]);
                 mask_p.put_pixel(x, y, Luma::<u8>::white()); 
             }
        });

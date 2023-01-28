@@ -14,6 +14,7 @@ use once_cell::sync::OnceCell;
 use std::{env, sync::Arc};
 use vision::{process::Processing, DetectorParameters, DynamicImage, RgbaImage};
 
+
 /// The channel on which frames are sent to the GUI
 static IMAGE_SENDER: OnceCell<Arc<Mutex<Sender<DynamicImage>>>> = OnceCell::new();
 
@@ -37,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     //Start processing thread
     let process = Processing::load(rx, process_tx, env::current_dir()?)?;
-    let handle = process.start();
+    let _handle = process.start();
 
     // Open camera stream, start GUI then when GUI exits, close the stream
     camera.open_stream().unwrap();
@@ -55,7 +56,7 @@ fn callback(image: Buffer) {
     // Get a lock to the image sender
     let tx = IMAGE_SENDER.get().unwrap().lock();
     // Decode the image as RGBA from the webcam
-    match image.decode_image::<LumaFormat>() {
+    match image.decode_image::<RgbAFormat>() {
         Ok(frame) => {
             // Ship it off to the UI
             let dynamic_image = DynamicImage::from(frame);
