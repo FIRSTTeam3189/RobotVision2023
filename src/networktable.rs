@@ -1,38 +1,30 @@
-// use nt::*;
+use nt::*;
+use std::result::Result;
 
+const IP: &str = "172.22.11.2";
 
-// static IP: String = String::from("172.22.11.2");
+pub struct NetworkTableI {
+    client_name: String,
+    client: NetworkTables<Client>,
+}
 
-// pub enum ClientCallBackType {
-//     ClientConnected(ConnectionCallbackType::ClientConnected),
-//     ClientDisconnected,
-// }
+pub enum NTError{
+    Disconnected,
+    Connected
+}
 
-// pub enum NTCallbackTypes {
-//     Add,
-//     Delete,
-//     Update,
-// }
+impl NetworkTableI {
+    pub async fn new(name: String) -> Result<Box<dyn std::error::Error>> {
+        let client = NetworkTables::connect(IP, &name).await;
+        let nt = NetworkTableI {
+            client_name: name,
+            client: client.unwrap(),
+        };
+        nt.client.add_connection_callback(ConnectionCallbackType::ClientDisconnected, |_| {
+            println!("Client Disconnected!");
+            return Err(NTError::Disconnected);
+        });
+        Ok(nt)
+    }
 
-// pub struct NetworkTableI {
-//     client_name: String,
-//     client: nt::NetworkTables<>,
-//     connection_callback: ClientCallBackType,
-//     callback_types: NTCallbackTypes
-// }
-
-// impl NetworkTableI {
-//     pub async fn new(name: String) -> Result<NetworkTables<Client>> {
-//         let nt = NetworkTableI {
-//             client_name: name,
-//             client: NetworkTables::connect(&IP, &name).await,
-//             connection_callback,
-//             callback_types
-//         };
-//         nt.client.add_connection_callback(nt.connection_callback.ClientConnected, |_| {
-//             println!("Network Tables Connected!");
-//         });
-//         nt
-//     }
-
-// }
+}
