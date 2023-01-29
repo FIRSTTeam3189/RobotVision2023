@@ -1,5 +1,4 @@
 use nt::*;
-use std::result::Result;
 
 const IP: &str = "172.22.11.2";
 
@@ -14,17 +13,30 @@ pub enum NTError{
 }
 
 impl NetworkTableI {
-    pub async fn new(name: String) -> Result<Box<dyn std::error::Error>> {
-        let client = NetworkTables::connect(IP, &name).await;
+    pub async fn new(name: String) -> NetworkTableI {
+        let client = NetworkTables::connect(IP, &name).await.unwrap();
         let nt = NetworkTableI {
             client_name: name,
-            client: client.unwrap(),
+            client: client,
         };
         nt.client.add_connection_callback(ConnectionCallbackType::ClientDisconnected, |_| {
             println!("Client Disconnected!");
-            return Err(NTError::Disconnected);
+            // return Err(NTError::Disconnected);
         });
-        Ok(nt)
+        nt
+    }
+
+    pub async fn write(client: NetworkTables<Client>, entry: String) {
+        let id = client
+        .create_entry(EntryData::new(
+            entry,
+            0,
+            EntryValue::Double(5.0),
+        )).await;
+        id.unwrap();
+        for (id, value) in client.entries() {
+            println!("{} ==> {:?}", id, value);
+        }
     }
 
 }
