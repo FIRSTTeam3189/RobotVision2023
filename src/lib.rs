@@ -236,6 +236,18 @@ struct Cli{
     shapening: f64,
     #[arg(short = 'd', long, default_value_t = 16.0)]
     decimation: f32,
+    #[arg(short = 'r', long, default_value_t = 0)]
+    rmin: i32,
+    #[arg(short = 'r', long, default_value_t = 255)]
+    rmax: i32,
+    #[arg(short = 'g', long, default_value_t = 0)]
+    gmin: i32,
+    #[arg(short = 'g', long, default_value_t = 255)]
+    gmax: i32,
+    #[arg(short = 'b', long, default_value_t = 0)]
+    bmin: i32,
+    #[arg(short = 'b', long, default_value_t = 255)]
+    bmax: i32
 }
 
 /// Contains all of the parameters needed to initialize the
