@@ -2,3 +2,12 @@ families = ["Tag16H5"]
 [cli]
 shapening = 5.0
 decimation = 5.0
+
+rmin = 100
+rmax = 200
+
+gmin = 220
+gmax = 255
+
+bmin = 150
+bmax = 220

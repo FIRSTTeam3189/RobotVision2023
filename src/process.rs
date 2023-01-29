@@ -80,8 +80,8 @@ impl Processing {
 
 fn process_thread(params: Processing) -> ProcessResult<()> {
     const ARC_LENGTH_MIN: f64 = 20.0;
-    const ASPECT_RATIO_MAX: f64 = 1.0;
-    const ASPECT_RATIO_MIN: f64 = 0.20;
+    const ASPECT_RATIO_MAX: f64 = 4.2;
+    const ASPECT_RATIO_MIN: f64 = 3.6;
 
     let image_rx = params.image_rx;
     let calibration = params.calibration;
@@ -89,9 +89,9 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
     let sender = params.sender;
 
     let blue = Rgba([0u8, 0u8, 255u8, 255u8]);
-    // let rectangle = Rect::at(130, 10).of_size(200, 200);
+    // rectangle: Rect::at(130, 10).of_size(200, 200);
 
-    let mut detector = detector_creator(parameters);
+    let mut detector = detector_creator(&parameters);
 
     let tag_params = (&calibration).into();
 
@@ -100,15 +100,31 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
         // `grayscale` is the image sent to the AprilTag detector to find tags
         // `frame` is used as a display for the UI.
         let image = image_rx.recv()?;
-        let grayscale = image.to_luma8();
-        let mut frame = image.into_rgba8();
-
+        let mut frame = image.to_rgba8();
+        let val = parameters.cli.clone();
         // Color boundaries
-        let rb = vec![240u8, 255u8];
-        let gb = vec![240u8, 255u8];
-        let bb = vec![240u8, 255u8];
+        let rb = vec![val.rmin as u8, val.rmax as u8];
+        let gb = vec![val.gmin as u8, val.gmax as u8];
+        let bb = vec![val.bmin as u8, val.bmax as u8];
+
+        let mut mask_p = mask_maker(&frame, rb, gb, bb);
+        morphology::open_mut(&mut mask_p, Norm::L1, 2);
+        let found_contours = contours::find_contours::<i32>(&mask_p);
+        let mut accepted_contours: Vec<contours::Contour<i32>> = Vec::new();
+        for contour in found_contours {
+            if geometry::arc_length(contour.points.as_slice(), true) > ARC_LENGTH_MIN {
+                let min_area = geometry::min_area_rect(contour.points.as_slice());
+                // min_area set as: [top left, top right, bottom right, bottom left]
+                let aspect_ratio = ((min_area[0].x - min_area[1].x) as f64)/((min_area[0].y - min_area[3].y) as f64);
+                if ASPECT_RATIO_MIN < aspect_ratio && aspect_ratio < ASPECT_RATIO_MAX {
+                    println!("It works horraaaaayyyyyyyy");
+                    accepted_contours.push(contour);
+                }
+            }
+        }
 
         // Do the actual proccessing here
+        let grayscale = image.into_luma8();
         let detections =  detector.detect(grayscale);
         let rects: Vec<Rect> = detections
             .iter()
@@ -155,24 +171,7 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
             frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);
         }
 
-        let mut mask_p = mask_maker(&frame, rb, gb, bb);
-        morphology::open_mut(&mut mask_p, Norm::L1, 2);
-        let found_contours = contours::find_contours::<i32>(&mask_p);
-        let mut accepted_contours: Vec<contours::Contour<i32>> = Vec::new();
-        for contour in found_contours {
-            if geometry::arc_length(contour.points.as_slice(), true) > ARC_LENGTH_MIN {
-                let min_area = geometry::min_area_rect(contour.points.as_slice());
-                // min_area set as: [top left, top right, bottom right, bottom left]
-                let aspect_ratio = ((min_area[0].x - min_area[1].x) as f64)/((min_area[0].y - min_area[3].y) as f64);
-                println!("{}", aspect_ratio);
-                if ASPECT_RATIO_MIN < aspect_ratio && aspect_ratio < ASPECT_RATIO_MAX {
-                    println!("It works horraaaaayyyyyyyy");
-                    accepted_contours.push(contour);
-                }
-            }
-        }
-
-        match sender.try_send(frame/*DynamicImage::from(mask_p).to_rgba8()*/) {
+        match sender.try_send(DynamicImage::from(mask_p).to_rgba8()) {
             Ok(_) => {}
             Err(crossbeam_channel::TrySendError::Full(_)) => {
                 println!("UI Thread is busy, skipping frame...")
@@ -187,7 +186,7 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
     Ok(())
 }
 
-fn detector_creator(parameters: DetectorParameters) -> Detector {
+fn detector_creator(parameters: &DetectorParameters) -> Detector {
     let detector = DetectorBuilder::new();
     let detector = parameters
         .families
@@ -218,8 +217,9 @@ fn detector_creator(parameters: DetectorParameters) -> Detector {
 fn mask_maker(frame: &ImageBuffer<Rgba<u8>, Vec<u8>>, rb: Vec<u8>, gb: Vec<u8>, bb: Vec<u8>) -> ImageBuffer<Luma<u8>, Vec<u8>> {
     let mut mask_p = ImageBuffer::from_pixel(frame.width(), frame.height(), Luma::<u8>::black());
         frame.enumerate_pixels().for_each(|(x, y, p)| {
-            if p.to_rgb()[0] < rb[1] && p.to_rgb()[0] > rb[0] && p.to_rgb()[1] < gb[1] && p.to_rgb()[1] > gb[0] && p.to_rgb()[2] < bb[1] && p.to_rgb()[2] > bb[0] {
-                // println!("{}, {}, {}", p.to_rgb()[0], p.to_rgb()[1], p.to_rgb()[2]);
+            let p = p.to_rgba();
+            if p[1] > gb[0] && p[1] < gb[1] && p[0] > rb[0] && p[0] < rb[1] && p[2] > bb[0] && p[2] < bb[1]{
+                //println!("{}, {}, {}", p[0], p[1], p[2]);
                 mask_p.put_pixel(x, y, Luma::<u8>::white()); 
             }
        });

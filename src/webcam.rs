@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     //Start processing thread
     let process = Processing::load(rx, process_tx, env::current_dir()?)?;
-    let _handle = process.start();
+    let handle = process.start();
 
     // Open camera stream, start GUI then when GUI exits, close the stream
     camera.open_stream().unwrap();
