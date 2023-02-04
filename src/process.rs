@@ -1,10 +1,12 @@
-use crate::{CalibrationError, CameraCalibration, DetectorParameters, RgbaImage};
+use crate::{CalibrationError, CameraCalibration, DetectorParameters, RgbaImage, networktable::{self, NetworkTableI}};
 use apriltag::{DetectorBuilder, Detector};
 use crossbeam_channel::{Receiver, RecvError, SendError, Sender};
 use image::{DynamicImage, Rgba, Pixel, Luma, ImageBuffer};
 use imageproc::{self, rect::Rect, definitions::{HasWhite, HasBlack}, morphology, distance_transform::Norm, contours, geometry};
+use nt::Client;
+use tokio::task::JoinHandle;
 
-use std::{path::Path, thread::{self}, thread::JoinHandle};
+use std::{path::Path, thread::{self}, task::Poll};
 
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -24,6 +26,8 @@ pub enum ProcessError {
 }
 
 pub type ProcessResult<T> = Result<T, ProcessError>;
+
+#[derive(Clone)]
 pub struct Processing {
     image_rx: Receiver<DynamicImage>,
     calibration: CameraCalibration,
@@ -72,13 +76,9 @@ impl Processing {
             sender,
         })
     }
-
-    pub fn start(self) -> JoinHandle<ProcessResult<()>> {
-        thread::spawn(move || process_thread(self))
-    }
 }
 
-fn process_thread(params: Processing) -> ProcessResult<()> {
+pub async fn process_thread(params: Processing) -> ProcessResult<()> {
     const ARC_LENGTH_MIN: f64 = 20.0;
     const ASPECT_RATIO_MAX: f64 = 4.2;
     const ASPECT_RATIO_MIN: f64 = 3.6;
@@ -91,7 +91,11 @@ fn process_thread(params: Processing) -> ProcessResult<()> {
     let blue = Rgba([0u8, 0u8, 255u8, 255u8]);
     // rectangle: Rect::at(130, 10).of_size(200, 200);
 
+
+    let net = NetworkTableI::new("name".to_string()).await;
+
     let mut detector = detector_creator(&parameters);
+    // NetworkTableI::write(net.client, "Test-Entry".to_string());
 
     let tag_params = (&calibration).into();
 
