@@ -247,7 +247,11 @@ struct Cli{
     #[arg(short = 'b', long, default_value_t = 0)]
     bmin: i32,
     #[arg(short = 'b', long, default_value_t = 255)]
-    bmax: i32
+    bmax: i32,
+    #[arg(short = 'a', long, default_value_t = 0.0)]
+    aspect_min: f64,
+    #[arg(short = 'a', long, default_value_t = 0.0)]
+    aspect_max: f64,
 }
 
 /// Contains all of the parameters needed to initialize the

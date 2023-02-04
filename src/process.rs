@@ -1,12 +1,10 @@
-use crate::{CalibrationError, CameraCalibration, DetectorParameters, RgbaImage, networktable::{self, NetworkTableI}};
+use crate::{CalibrationError, CameraCalibration, DetectorParameters, RgbaImage, networktable::NetworkTableI};
 use apriltag::{DetectorBuilder, Detector};
 use crossbeam_channel::{Receiver, RecvError, SendError, Sender};
 use image::{DynamicImage, Rgba, Pixel, Luma, ImageBuffer};
 use imageproc::{self, rect::Rect, definitions::{HasWhite, HasBlack}, morphology, distance_transform::Norm, contours, geometry};
-use nt::Client;
-use tokio::task::JoinHandle;
 
-use std::{path::Path, thread::{self}, task::Poll};
+use std::{path::Path};
 
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -80,13 +78,16 @@ impl Processing {
 
 pub async fn process_thread(params: Processing) -> ProcessResult<()> {
     const ARC_LENGTH_MIN: f64 = 20.0;
-    const ASPECT_RATIO_MAX: f64 = 4.2;
-    const ASPECT_RATIO_MIN: f64 = 3.6;
 
     let image_rx = params.image_rx;
     let calibration = params.calibration;
     let parameters = params.parameters;
     let sender = params.sender;
+
+    let val = parameters.cli.clone();
+
+    let aspect_ratio_max: f64 = val.aspect_max;
+    let aspect_ratio_min: f64 = val.aspect_min;
 
     let blue = Rgba([0u8, 0u8, 255u8, 255u8]);
     // rectangle: Rect::at(130, 10).of_size(200, 200);
@@ -105,7 +106,6 @@ pub async fn process_thread(params: Processing) -> ProcessResult<()> {
         // `frame` is used as a display for the UI.
         let image = image_rx.recv()?;
         let mut frame = image.to_rgba8();
-        let val = parameters.cli.clone();
         // Color boundaries
         let rb = vec![val.rmin as u8, val.rmax as u8];
         let gb = vec![val.gmin as u8, val.gmax as u8];
@@ -120,8 +120,7 @@ pub async fn process_thread(params: Processing) -> ProcessResult<()> {
                 let min_area = geometry::min_area_rect(contour.points.as_slice());
                 // min_area set as: [top left, top right, bottom right, bottom left]
                 let aspect_ratio = ((min_area[0].x - min_area[1].x) as f64)/((min_area[0].y - min_area[3].y) as f64);
-                if ASPECT_RATIO_MIN < aspect_ratio && aspect_ratio < ASPECT_RATIO_MAX {
-                    println!("It works horraaaaayyyyyyyy");
+                if aspect_ratio_min < aspect_ratio && aspect_ratio < aspect_ratio_max {
                     accepted_contours.push(contour);
                 }
             }
@@ -223,7 +222,6 @@ fn mask_maker(frame: &ImageBuffer<Rgba<u8>, Vec<u8>>, rb: Vec<u8>, gb: Vec<u8>, 
         frame.enumerate_pixels().for_each(|(x, y, p)| {
             let p = p.to_rgba();
             if p[1] > gb[0] && p[1] < gb[1] && p[0] > rb[0] && p[0] < rb[1] && p[2] > bb[0] && p[2] < bb[1]{
-                //println!("{}, {}, {}", p[0], p[1], p[2]);
                 mask_p.put_pixel(x, y, Luma::<u8>::white()); 
             }
        });

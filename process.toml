@@ -11,3 +11,6 @@ gmax = 255
 
 bmin = 150
 bmax = 220
+
+aspect_min = 3.2
+aspect_max = 5.0
