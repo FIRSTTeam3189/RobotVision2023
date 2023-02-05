@@ -111,13 +111,13 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
     let mut detector = detector_creator(&parameters);
     let tag_params = (&calibration).into();
     println!("---creating");
-    let url = Url::parse(&parameters.network_table_addr).unwrap().socket_addrs(||  None).unwrap();
-    if url.is_empty() {
-        panic!("No Addr found in network table addr in process config");
-    }else{
-        println!("using [{}] as network tables server", url[0]);
-    }
-    let net = handle.block_on(NetworkTableI::new(url[0]));
+    // let url = Url::parse(&parameters.network_table_addr).unwrap().socket_addrs(||  None).unwrap();
+    // if url.is_empty() {
+    //     panic!("No Addr found in network table addr in process config");
+    // }else{
+    //     println!("using [{}] as network tables server", url[0]);
+    // }
+    let net = handle.block_on(NetworkTableI::new(parameters.network_table_addr));
     println!("---created");
     loop {
         // `image` is a dynamic image.
