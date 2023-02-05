@@ -248,6 +248,10 @@ struct Cli {
     bmin: i32,
     #[arg(short = 'b', long, default_value_t = 255)]
     bmax: i32,
+    #[arg(short = 'a', long, default_value_t = 0.0)]
+    aspect_min: f64,
+    #[arg(short = 'a', long, default_value_t = 0.0)]
+    aspect_max: f64,
 }
 
 fn get_default_network_table_addr() -> String {
