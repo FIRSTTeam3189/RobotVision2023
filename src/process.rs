@@ -117,7 +117,7 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
     // }else{
     //     println!("using [{}] as network tables server", url[0]);
     // }
-    let net = handle.block_on(NetworkTableI::new(parameters.network_table_addr));
+    let net = handle.block_on(NetworkTableI::new(&parameters.network_table_addr, "ni-rs"));
     println!("---created");
     loop {
         // `image` is a dynamic image.
@@ -191,9 +191,8 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
 
         if rects.is_empty() {
             println!("--test");
-            let thing = handle.block_on(net.write("test")).unwrap();
-            handle.block_on(net.write_value(&thing, &network_tables::Value::Boolean(true)));
-            println!("--test");
+            handle.block_on(net.init_value("test", nt::EntryValue::Boolean(true)));
+            println!("--tested");
         }
         for rect in rects {
             frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);

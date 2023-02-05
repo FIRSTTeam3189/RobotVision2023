@@ -2,7 +2,7 @@ use std::{fmt::Display, time::Duration, net::{SocketAddr, ToSocketAddrs}};
 
 use crate::AprilTagFamily;
 use crossbeam_channel::{bounded, Receiver, Sender};
-use network_tables::{v4::{Client, Type, Topic, PublishedTopic}, Value};
+use nt::{NetworkTables, Client, EntryData, EntryValue, ConnectionCallbackType};
 
 const IP: &str = "ws://roboRIO-3189-FRC.local:1735";
 
@@ -24,7 +24,7 @@ pub enum VisionMessage {
 // }
 
 pub struct NetworkTableI {
-    pub client: Client,
+    pub client: NetworkTables<Client>,
 }
 
 pub enum NTError {
@@ -64,28 +64,33 @@ pub enum NTError {
 // }
 
 impl NetworkTableI {
-    pub async fn new<P : Into<SocketAddr>>(addr: P) -> NetworkTableI {
+    pub async fn new(addr: &str, client_name: &str) -> NetworkTableI {
         let client =
-            match tokio::time::timeout(Duration::from_secs(5), Client::try_new(addr))
+            match tokio::time::timeout(Duration::from_secs(5), NetworkTables::connect(addr, &client_name))
                 .await
             {
                 Ok(thing) => thing,
                 Err(err) => panic!("connecting to network tables failed. [{err}]"),
             };
 
+
         let nt = NetworkTableI {
             client: client.unwrap(),
         };
+
+        nt.client.add_connection_callback(ConnectionCallbackType::ClientConnected, |l| println!("Connected! {}", l));
+        nt.client.add_connection_callback(ConnectionCallbackType::ClientDisconnected, |l| println!("Disconnected! {}", l));
+        
         nt
     }
 
-    pub async fn write(&self, entry: &str) -> Option<PublishedTopic> {
+    pub async fn init_value(&self, name: &str, entry: EntryValue) -> Option<u16> {
         match self
-            .client.publish_topic(entry, Type::Boolean, None)
+            .client.create_entry(EntryData::new(name.to_string(), 0, entry))
             .await {
-                Ok(thing) => {
-                    println!("Wrote topic [{thing:?}]");
-                    Some(thing)
+                Ok(id) => {
+                    println!("Wrote topic [{id}]");
+                    Some(id)
                 }
                 Err(err) => {
                     println!("Failed writing topic [{err}]");
@@ -94,12 +99,7 @@ impl NetworkTableI {
             }
     }
 
-    pub async fn write_value(&self, key: &PublishedTopic, entry: &Value ) {
-        match self
-            .client.publish_value(key, entry)
-            .await {
-                Ok(thing) => println!("Wrote topic [{thing:?}]"),
-                Err(err) => println!("Failed writing topic [{err}]"),
-            }
+    pub fn update_value(&self, key: u16, entry: EntryValue ) {
+        self.client.update_entry(key, entry);
     }
 }

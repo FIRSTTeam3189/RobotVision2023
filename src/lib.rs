@@ -254,8 +254,8 @@ struct Cli {
     aspect_max: f64,
 }
 
-fn get_default_network_table_addr() -> SocketAddr {
-    SocketAddr::from(([0,0,0,0], 0))
+fn get_default_network_table_addr() -> String {
+    format!("{}", SocketAddr::from(([0,0,0,0], 0)))
 }
 
 /// Contains all of the parameters needed to initialize the
@@ -263,7 +263,7 @@ fn get_default_network_table_addr() -> SocketAddr {
 pub struct DetectorParameters {
     families: Vec<AprilTagFamily>,
     #[serde(default = "get_default_network_table_addr")]
-    network_table_addr: SocketAddr,
+    network_table_addr: String,
     cli: Cli,
 }
 
