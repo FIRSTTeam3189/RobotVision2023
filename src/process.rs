@@ -1,12 +1,25 @@
-use crate::{CalibrationError, CameraCalibration, DetectorParameters, RgbaImage, networktable::{self, NetworkTableI}};
-use apriltag::{DetectorBuilder, Detector};
+use crate::{
+    networktable::{self, NetworkTableI, VisionMessage},
+    CalibrationError, CameraCalibration, DetectorParameters, RgbaImage,
+};
+use apriltag::{Detector, DetectorBuilder};
 use crossbeam_channel::{Receiver, RecvError, SendError, Sender};
-use image::{DynamicImage, Rgba, Pixel, Luma, ImageBuffer};
-use imageproc::{self, rect::Rect, definitions::{HasWhite, HasBlack}, morphology, distance_transform::Norm, contours, geometry};
-use nt::Client;
-use tokio::task::JoinHandle;
+use image::{DynamicImage, ImageBuffer, Luma, Pixel, Rgba};
+use imageproc::{
+    self, contours,
+    definitions::{HasBlack, HasWhite},
+    distance_transform::Norm,
+    geometry, morphology,
+    rect::Rect,
+};
+use tokio::{runtime::Handle, task::JoinHandle};
+use url::Url;
 
-use std::{path::Path, thread::{self}, task::Poll};
+use std::{
+    path::Path,
+    task::Poll,
+    thread::{self},
+};
 
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -78,7 +91,7 @@ impl Processing {
     }
 }
 
-pub async fn process_thread(params: Processing) -> ProcessResult<()> {
+pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
     const ARC_LENGTH_MIN: f64 = 20.0;
     const ASPECT_RATIO_MAX: f64 = 4.2;
     const ASPECT_RATIO_MIN: f64 = 3.6;
@@ -91,14 +104,17 @@ pub async fn process_thread(params: Processing) -> ProcessResult<()> {
     let blue = Rgba([0u8, 0u8, 255u8, 255u8]);
     // rectangle: Rect::at(130, 10).of_size(200, 200);
 
-
-    let net = NetworkTableI::new("name".to_string()).await;
-
     let mut detector = detector_creator(&parameters);
-    // NetworkTableI::write(net.client, "Test-Entry".to_string());
-
     let tag_params = (&calibration).into();
-
+    println!("---creating");
+    let url = Url::parse(&parameters.network_table_addr).unwrap().socket_addrs(||  None).unwrap();
+    if url.is_empty() {
+        panic!("No Addr found in network table addr in process config");
+    }else{
+        println!("using [{}] as network tables server", url[0]);
+    }
+    let net = handle.block_on(NetworkTableI::new(url[0]));
+    println!("---created");
     loop {
         // `image` is a dynamic image.
         // `grayscale` is the image sent to the AprilTag detector to find tags
@@ -119,7 +135,8 @@ pub async fn process_thread(params: Processing) -> ProcessResult<()> {
             if geometry::arc_length(contour.points.as_slice(), true) > ARC_LENGTH_MIN {
                 let min_area = geometry::min_area_rect(contour.points.as_slice());
                 // min_area set as: [top left, top right, bottom right, bottom left]
-                let aspect_ratio = ((min_area[0].x - min_area[1].x) as f64)/((min_area[0].y - min_area[3].y) as f64);
+                let aspect_ratio = ((min_area[0].x - min_area[1].x) as f64)
+                    / ((min_area[0].y - min_area[3].y) as f64);
                 if ASPECT_RATIO_MIN < aspect_ratio && aspect_ratio < ASPECT_RATIO_MAX {
                     println!("It works horraaaaayyyyyyyy");
                     accepted_contours.push(contour);
@@ -129,7 +146,7 @@ pub async fn process_thread(params: Processing) -> ProcessResult<()> {
 
         // Do the actual proccessing here
         let grayscale = image.into_luma8();
-        let detections =  detector.detect(grayscale);
+        let detections = detector.detect(grayscale);
         let rects: Vec<Rect> = detections
             .iter()
             .filter_map(|x| {
@@ -170,7 +187,13 @@ pub async fn process_thread(params: Processing) -> ProcessResult<()> {
                 }
             })
             .collect();
-        
+
+        if rects.is_empty() {
+            println!("--test");
+            let thing = handle.block_on(net.write("test")).unwrap();
+            handle.block_on(net.write_value(&thing, &network_tables::Value::Boolean(true)));
+            println!("--test");
+        }
         for rect in rects {
             frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);
         }
@@ -186,6 +209,7 @@ pub async fn process_thread(params: Processing) -> ProcessResult<()> {
             }
         }
     }
+    std::mem::drop(detector);
 
     Ok(())
 }
@@ -195,8 +219,7 @@ fn detector_creator(parameters: &DetectorParameters) -> Detector {
     let detector = parameters
         .families
         .iter()
-        .fold(detector, |d, f| d.add_family_bits(f.into(), 1)
-    );
+        .fold(detector, |d, f| d.add_family_bits(f.into(), 1));
 
     let mut detector = detector.build().unwrap();
     detector.set_thread_number(8);
@@ -205,27 +228,38 @@ fn detector_creator(parameters: &DetectorParameters) -> Detector {
     detector.set_shapening(parameters.cli.shapening);
     detector.set_refine_edges(false);
     detector.set_sigma(0.0);
-    detector.set_thresholds(apriltag::detector::QuadThresholds { 
+    detector.set_thresholds(apriltag::detector::QuadThresholds {
         min_cluster_pixels: (5),
         max_maxima_number: (10),
         min_angle: (apriltag::Angle::accept_all_candidates()),
         min_opposite_angle: (apriltag::Angle::from_degrees(360.0)),
-        max_mse: (10.0), 
-        min_white_black_diff: (5), 
-        deglitch: (false) 
+        max_mse: (10.0),
+        min_white_black_diff: (5),
+        deglitch: (false),
     });
 
     detector
 }
 
-fn mask_maker(frame: &ImageBuffer<Rgba<u8>, Vec<u8>>, rb: Vec<u8>, gb: Vec<u8>, bb: Vec<u8>) -> ImageBuffer<Luma<u8>, Vec<u8>> {
+fn mask_maker(
+    frame: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    rb: Vec<u8>,
+    gb: Vec<u8>,
+    bb: Vec<u8>,
+) -> ImageBuffer<Luma<u8>, Vec<u8>> {
     let mut mask_p = ImageBuffer::from_pixel(frame.width(), frame.height(), Luma::<u8>::black());
-        frame.enumerate_pixels().for_each(|(x, y, p)| {
-            let p = p.to_rgba();
-            if p[1] > gb[0] && p[1] < gb[1] && p[0] > rb[0] && p[0] < rb[1] && p[2] > bb[0] && p[2] < bb[1]{
-                //println!("{}, {}, {}", p[0], p[1], p[2]);
-                mask_p.put_pixel(x, y, Luma::<u8>::white()); 
-            }
-       });
+    frame.enumerate_pixels().for_each(|(x, y, p)| {
+        let p = p.to_rgba();
+        if p[1] > gb[0]
+            && p[1] < gb[1]
+            && p[0] > rb[0]
+            && p[0] < rb[1]
+            && p[2] > bb[0]
+            && p[2] < bb[1]
+        {
+            //println!("{}, {}, {}", p[0], p[1], p[2]);
+            mask_p.put_pixel(x, y, Luma::<u8>::white());
+        }
+    });
     mask_p
 }

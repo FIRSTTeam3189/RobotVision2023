@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, net::{SocketAddr, SocketAddrV6, Ipv6Addr}, str::FromStr};
 
 use apriltag::{Family, TagParams};
 use imageproc::geometric_transformations::Projection;
@@ -8,8 +8,8 @@ use thiserror::Error;
 
 pub use image::{DynamicImage, RgbImage, RgbaImage};
 
-pub mod process;
 pub mod networktable;
+pub mod process;
 use clap::*;
 
 /// Errors pertaining to errors in reading/using camera calibration information
@@ -231,7 +231,7 @@ impl From<&AprilTagFamily> for Family {
 }
 #[derive(Parser, Debug, Deserialize, Serialize, Clone, Default)]
 #[command(author, version, about, long_about = None)]
-struct Cli{
+struct Cli {
     #[arg(short = 's', long, default_value_t = 8.0)]
     shapening: f64,
     #[arg(short = 'd', long, default_value_t = 16.0)]
@@ -247,20 +247,28 @@ struct Cli{
     #[arg(short = 'b', long, default_value_t = 0)]
     bmin: i32,
     #[arg(short = 'b', long, default_value_t = 255)]
-    bmax: i32
+    bmax: i32,
+}
+
+fn get_default_network_table_addr() -> String {
+    "roboRIO-3189-FRC.local:1735".to_string()
 }
 
 /// Contains all of the parameters needed to initialize the
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DetectorParameters {
     families: Vec<AprilTagFamily>,
+    #[serde(default = "get_default_network_table_addr")]
+    network_table_addr: String,
     cli: Cli,
 }
 
 impl Default for DetectorParameters {
     fn default() -> Self {
         Self {
-            families: vec![AprilTagFamily::default()], cli: Cli::parse(),
+            families: vec![AprilTagFamily::default()],
+            network_table_addr: get_default_network_table_addr(),
+            cli: Cli::parse(),
         }
     }
 }

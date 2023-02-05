@@ -44,7 +44,9 @@ parking_lot = "0.12"
 
 # Crossbeam-channels for best performance
 crossbeam-channel = "0.5"
-nt = "3.0.0"
+# nt = { version = "3.0.0", features = ["websocket"] }
+network-tables = { version = "0.0.4", features = ["client-v4"] }
+url = "2.3"
 
 [dependencies.nokhwa]
 #git = "https://github.com/l1npengtul/nokhwa"

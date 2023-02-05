@@ -12,14 +12,13 @@ use nokhwa::{
 };
 use once_cell::sync::OnceCell;
 use std::{env, sync::Arc};
+use tokio::runtime::Runtime;
 use vision::{process::Processing, DetectorParameters, DynamicImage, RgbaImage};
-
 
 /// The channel on which frames are sent to the GUI
 static IMAGE_SENDER: OnceCell<Arc<Mutex<Sender<DynamicImage>>>> = OnceCell::new();
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Uncomment to list available cameras on the system
     // use nokhwa::{query, utils::ApiBackend};
     // let cameras = query(ApiBackend::Auto).unwrap();
@@ -39,7 +38,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     //Start processing thread
     let process = Processing::load(rx, process_tx, env::current_dir()?)?;
-    let handle = tokio::spawn(vision::process::process_thread(process));
+    let rt = Runtime::new()?;
+    let handle = rt.handle().clone();
+    let handle = std::thread::spawn(|| vision::process::process_thread(process, handle));
 
     // Open camera stream, start GUI then when GUI exits, close the stream
     camera.open_stream().unwrap();

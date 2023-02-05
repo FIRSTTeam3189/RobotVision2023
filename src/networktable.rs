@@ -1,49 +1,105 @@
-use nt::*;
-use crossbeam_channel::{Receiver, Sender};
+use std::{fmt::Display, time::Duration, net::{SocketAddr, ToSocketAddrs}};
 
-const IP: &str = "172.22.11.2";
+use crate::AprilTagFamily;
+use crossbeam_channel::{bounded, Receiver, Sender};
+use network_tables::{v4::{Client, Type, Topic, PublishedTopic}, Value};
+
+const IP: &str = "ws://roboRIO-3189-FRC.local:1735";
+
+pub enum VisionMessage {
+    NoTargets,
+    AprilTag {
+        tagtype: AprilTagFamily,
+        distance: f64,
+        id: f64,
+    },
+    Contours {
+        found: bool,
+        size: f64,
+    },
+}
+
+// pub struct NetworkThread {
+//     netthread: tokio::task::JoinHandle<NetworkTableI>,
+// }
 
 pub struct NetworkTableI {
-    pub client_name: String,
-    pub client: NetworkTables<Client>,
+    pub client: Client,
 }
 
-pub enum NTError{
+pub enum NTError {
     Disconnected,
-    Connected
+    Connected,
 }
+
+// impl NetworkThread {
+//     pub async fn log(msg: VisionMessage) -> NetworkThread {
+//         let (st, rt) = bounded(1);
+//         let netthread = tokio::spawn(async move {
+//             let net = NetworkTableI::new("Vision-Net".to_string()).await;
+//             for msg in rt {
+//                 match msg {
+//                     VisionMessage::NoTargets => {
+//                         net.write_value("found", EntryValue::Boolean(false)).await;
+//                     }
+//                     VisionMessage::AprilTag {
+//                         tagtype,
+//                         distance,
+//                         id,
+//                     } => {
+//                         net.write_value("distance", EntryValue::Double(distance))
+//                             .await;
+//                         net.write_value("id", EntryValue::Double(id)).await;
+//                     }
+//                     VisionMessage::Contours { found, size } => {}
+//                 }
+//             }
+//             net
+//         });
+
+//         let nthread = NetworkThread { netthread };
+
+//         nthread
+//     }
+// }
 
 impl NetworkTableI {
-    pub async fn new(name: String) -> NetworkTableI  {
-        let (tx, rx) = crossbeam_channel::bounded(1);
-        let client_name = name.clone();
-        let client = NetworkTables::connect("10.31.89.2", &name).await;
-        let _ = tx.send(client);
-
-        let client = rx.recv().unwrap();
+    pub async fn new<P : Into<SocketAddr>>(addr: P) -> NetworkTableI {
+        let client =
+            match tokio::time::timeout(Duration::from_secs(5), Client::try_new(addr))
+                .await
+            {
+                Ok(thing) => thing,
+                Err(err) => panic!("connecting to network tables failed. [{err}]"),
+            };
 
         let nt = NetworkTableI {
-            client_name,
             client: client.unwrap(),
         };
-        nt.client.add_connection_callback(ConnectionCallbackType::ClientDisconnected, |_| {
-            println!("Client Disconnected!");
-            // return Err(NTError::Disconnected);
-        });
-
         nt
     }
 
-    pub async fn write(&self, entry: String) {
-        let id = self.client.create_entry(EntryData::new(
-            entry,
-            0,
-            EntryValue::Double(5.0),
-        )).await;
-        id.unwrap();
-        for (id, value) in self.client.entries() {
-            println!("{} ==> {:?}", id, value);
-        }
+    pub async fn write(&self, entry: &str) -> Option<PublishedTopic> {
+        match self
+            .client.publish_topic(entry, Type::Boolean, None)
+            .await {
+                Ok(thing) => {
+                    println!("Wrote topic [{thing:?}]");
+                    Some(thing)
+                }
+                Err(err) => {
+                    println!("Failed writing topic [{err}]");
+                    None
+                }
+            }
     }
 
+    pub async fn write_value(&self, key: &PublishedTopic, entry: &Value ) {
+        match self
+            .client.publish_value(key, entry)
+            .await {
+                Ok(thing) => println!("Wrote topic [{thing:?}]"),
+                Err(err) => println!("Failed writing topic [{err}]"),
+            }
+    }
 }

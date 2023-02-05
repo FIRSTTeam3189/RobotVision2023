@@ -1,4 +1,6 @@
 families = ["Tag16H5"]
+network_table_addr = "ws://roboRIO-3189-FRC.local:1735"
+
 [cli]
 shapening = 5.0
 decimation = 5.0
