@@ -1,4 +1,6 @@
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
+use flexi_logger::{Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming};
+use log::{debug, trace, warn};
 use parking_lot::Mutex;
 
 use eframe::egui;
@@ -11,7 +13,7 @@ use nokhwa::{
     Buffer,
 };
 use once_cell::sync::OnceCell;
-use std::{env, sync::Arc};
+use std::{env, sync::Arc, time::Duration};
 use tokio::runtime::Runtime;
 use vision::{process::Processing, DetectorParameters, DynamicImage, RgbaImage};
 
@@ -19,10 +21,21 @@ use vision::{process::Processing, DetectorParameters, DynamicImage, RgbaImage};
 static IMAGE_SENDER: OnceCell<Arc<Mutex<Sender<DynamicImage>>>> = OnceCell::new();
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    Logger::try_with_str("info")? // Write all error, warn, and info messages
+        .log_to_file(FileSpec::default().basename("test"))
+        .append()
+        .duplicate_to_stdout(Duplicate::Warn)
+        .rotate(
+            // If the program runs long enough,
+            Criterion::Size(10000),   // - create a new file every day
+            Naming::Numbers,          // - let the rotated files have a timestamp in their name
+            Cleanup::KeepLogFiles(7), // - keep at most 7 log files
+        )
+        .start()?;
     // Uncomment to list available cameras on the system
     // use nokhwa::{query, utils::ApiBackend};
     // let cameras = query(ApiBackend::Auto).unwrap();
-    // cameras.iter().for_each(|cam| println!("{:?}", cam));
+    // cameras.iter().for_each(|cam| trace!("{:?}", cam));
 
     // let test = DetectorParameters::default();
     // std::fs::write("test.toml", toml::to_vec(&test)?)?;
@@ -35,13 +48,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let format = RequestedFormatType::AbsoluteHighestFrameRate;
     let format = RequestedFormat::new::<RgbAFormat>(format);
     let mut camera = CallbackCamera::new(CameraIndex::Index(1), format, callback).unwrap();
+    debug!("Created Camera!!!!");
 
     //Start processing thread
     let process = Processing::load(rx, process_tx, env::current_dir()?)?;
+    debug!("Loaded PROCESSING");
     let rt = Runtime::new()?;
     let handle = rt.handle().clone();
     let handle = std::thread::spawn(|| vision::process::process_thread(process, handle));
-
+    debug!("Started Processing thread!");
     // Open camera stream, start GUI then when GUI exits, close the stream
     camera.open_stream().unwrap();
     let options = eframe::NativeOptions::default();
@@ -55,6 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn callback(image: Buffer) {
+    std::thread::sleep(Duration::from_millis(500));
     // Get a lock to the image sender
     let tx = IMAGE_SENDER.get().unwrap().lock();
     // Decode the image as RGBA from the webcam
@@ -65,15 +81,15 @@ fn callback(image: Buffer) {
             match tx.try_send(dynamic_image) {
                 Ok(_) => {}
                 Err(TrySendError::Full(_)) => {
-                    println!("Processing busy, dropping frame...");
+                    debug!("Processing busy, dropping frame...");
                 }
                 Err(TrySendError::Disconnected(_)) => {
-                    println!("Failed to send frame -- disconnected.");
+                    warn!("Failed to send frame -- disconnected.");
                 }
             }
         }
         Err(e) => {
-            println!("Failed to decode: {e}");
+            warn!("Failed to decode: {e}");
         }
     }
 }
@@ -133,11 +149,11 @@ impl eframe::App for WebcamApp {
                     let path = format!("./images/image-{}.jpg", self.count);
                     let grayscale_frame = DynamicImage::from(frame.clone()).into_luma8();
                     if let Err(e) = grayscale_frame.save(path) {
-                        println!("Failed to save image: {e}");
+                        warn!("Failed to save image: {e}");
                     }
                 }
                 #[cfg(not(feature = "save-pix"))]
-                println!("{} frames received", 60 * self.count)
+                trace!("{} frames received", 60 * self.count)
             }
 
             // Get the pixel frame data and create a new ColorImage

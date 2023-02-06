@@ -1,5 +1,5 @@
 families = ["Tag16H5"]
-network_table_addr = "169.254.110.127:5810"
+network_table_addr = "169.254.110.127:1740"
 
 [cli]
 shapening = 5.0

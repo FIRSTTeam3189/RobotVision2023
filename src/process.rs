@@ -12,6 +12,7 @@ use imageproc::{
     geometry, morphology,
     rect::Rect,
 };
+use log::{debug, trace};
 use tokio::{runtime::Handle, task::JoinHandle};
 use url::Url;
 
@@ -20,7 +21,6 @@ use std::{
     task::Poll,
     thread::{self},
 };
-
 
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -70,9 +70,9 @@ impl Processing {
         // Create Paths to config files
         let path = path.as_ref();
         let cal_path = path.join(Self::CAMERA_CAL_FILE_NAME);
-        println!("loaded Calibration from: {}", cal_path.display());
+        trace!("loaded Calibration from: {}", cal_path.display());
         let detect_path = path.join(Self::DETECTOR_PERAMS_FILE_NAME);
-        println!("loaded Detector Parameters from: {}", detect_path.display());
+        trace!("loaded Detector Parameters from: {}", detect_path.display());
 
         // Contents of the files
         let cal_contents = std::fs::read_to_string(cal_path)?;
@@ -110,15 +110,9 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
 
     let mut detector = detector_creator(&parameters);
     let tag_params = (&calibration).into();
-    println!("---creating");
-    // let url = Url::parse(&parameters.network_table_addr).unwrap().socket_addrs(||  None).unwrap();
-    // if url.is_empty() {
-    //     panic!("No Addr found in network table addr in process config");
-    // }else{
-    //     println!("using [{}] as network tables server", url[0]);
-    // }
-    let net = handle.block_on(NetworkTableI::new(&parameters.network_table_addr, "ni-rs"));
-    println!("---created");
+    let mut net = handle.block_on(NetworkTableI::new(&parameters.network_table_addr, "ni-rs"));
+    handle.block_on(net.init_value("test", nt::EntryValue::Boolean(true)));
+    debug!("Process & thread Init Complete!!!!!!!!!!!!!!!!!");
     loop {
         // `image` is a dynamic image.
         // `grayscale` is the image sent to the AprilTag detector to find tags
@@ -138,7 +132,8 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
             if geometry::arc_length(contour.points.as_slice(), true) > ARC_LENGTH_MIN {
                 let min_area = geometry::min_area_rect(contour.points.as_slice());
                 // min_area set as: [top left, top right, bottom right, bottom left]
-                let aspect_ratio = ((min_area[0].x - min_area[1].x) as f64)/((min_area[0].y - min_area[3].y) as f64);
+                let aspect_ratio = ((min_area[0].x - min_area[1].x) as f64)
+                    / ((min_area[0].y - min_area[3].y) as f64);
                 if aspect_ratio_min < aspect_ratio && aspect_ratio < aspect_ratio_max {
                     accepted_contours.push(contour);
                 }
@@ -190,9 +185,7 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
             .collect();
 
         if rects.is_empty() {
-            println!("--test");
             handle.block_on(net.init_value("test", nt::EntryValue::Boolean(true)));
-            println!("--tested");
         }
         for rect in rects {
             frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);
@@ -201,10 +194,10 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
         match sender.try_send(DynamicImage::from(mask_p).to_rgba8()) {
             Ok(_) => {}
             Err(crossbeam_channel::TrySendError::Full(_)) => {
-                println!("UI Thread is busy, skipping frame...")
+                debug!("UI Thread is busy, skipping frame...")
             }
             Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
-                println!("UI Thread disconnected! Breaking loop...");
+                debug!("UI Thread disconnected! Breaking loop...");
                 break;
             }
         }
@@ -248,11 +241,17 @@ fn mask_maker(
     bb: Vec<u8>,
 ) -> ImageBuffer<Luma<u8>, Vec<u8>> {
     let mut mask_p = ImageBuffer::from_pixel(frame.width(), frame.height(), Luma::<u8>::black());
-        frame.enumerate_pixels().for_each(|(x, y, p)| {
-            let p = p.to_rgba();
-            if p[1] > gb[0] && p[1] < gb[1] && p[0] > rb[0] && p[0] < rb[1] && p[2] > bb[0] && p[2] < bb[1]{
-                mask_p.put_pixel(x, y, Luma::<u8>::white()); 
-            }
-       });
+    frame.enumerate_pixels().for_each(|(x, y, p)| {
+        let p = p.to_rgba();
+        if p[1] > gb[0]
+            && p[1] < gb[1]
+            && p[0] > rb[0]
+            && p[0] < rb[1]
+            && p[2] > bb[0]
+            && p[2] < bb[1]
+        {
+            mask_p.put_pixel(x, y, Luma::<u8>::white());
+        }
+    });
     mask_p
 }

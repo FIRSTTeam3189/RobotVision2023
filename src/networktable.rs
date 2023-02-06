@@ -1,8 +1,13 @@
-use std::{fmt::Display, time::Duration, net::{SocketAddr, ToSocketAddrs}};
+use std::{
+    fmt::Display,
+    net::{SocketAddr, ToSocketAddrs},
+    time::Duration,
+};
 
 use crate::AprilTagFamily;
 use crossbeam_channel::{bounded, Receiver, Sender};
-use nt::{NetworkTables, Client, EntryData, EntryValue, ConnectionCallbackType};
+use log::{debug, info, warn};
+use nt::{Client, ConnectionCallbackType, EntryData, EntryValue, NetworkTables};
 
 const IP: &str = "ws://roboRIO-3189-FRC.local:1735";
 
@@ -64,42 +69,53 @@ pub enum NTError {
 // }
 
 impl NetworkTableI {
-    pub async fn new(addr: &str, client_name: &str) -> NetworkTableI {
-        let client =
-            match tokio::time::timeout(Duration::from_secs(5), NetworkTables::connect(addr, &client_name))
-                .await
-            {
-                Ok(thing) => thing,
-                Err(err) => panic!("connecting to network tables failed. [{err}]"),
-            };
-
+    pub async fn new<'a>(addr: &'a str, client_name: &'a str) -> NetworkTableI {
+        debug!("connecting to network tables at {addr}");
+        let client = match tokio::time::timeout(
+            Duration::from_secs(5),
+            NetworkTables::connect(addr, &client_name),
+        )
+        .await
+        {
+            Ok(thing) => thing,
+            Err(err) => panic!("connecting to network tables failed. [{err}]"),
+        };
 
         let nt = NetworkTableI {
             client: client.unwrap(),
         };
 
-        nt.client.add_connection_callback(ConnectionCallbackType::ClientConnected, |l| println!("Connected! {}", l));
-        nt.client.add_connection_callback(ConnectionCallbackType::ClientDisconnected, |l| println!("Disconnected! {}", l));
-        
+        nt.client
+            .add_connection_callback(ConnectionCallbackType::ClientConnected, |l| {
+                info!("Connected! {}", l)
+            });
+        nt.client
+            .add_connection_callback(ConnectionCallbackType::ClientDisconnected, |l| {
+                info!("Disconnected! {}", l)
+            });
+
         nt
     }
 
-    pub async fn init_value(&self, name: &str, entry: EntryValue) -> Option<u16> {
+    pub async fn init_value(&mut self, name: &str, entry: EntryValue) -> Option<u16> {
+        // self.client.reconnect().await;
         match self
-            .client.create_entry(EntryData::new(name.to_string(), 0, entry))
-            .await {
-                Ok(id) => {
-                    println!("Wrote topic [{id}]");
-                    Some(id)
-                }
-                Err(err) => {
-                    println!("Failed writing topic [{err}]");
-                    None
-                }
+            .client
+            .create_entry(EntryData::new(name.to_string(), 0, entry))
+            .await
+        {
+            Ok(id) => {
+                debug!("Wrote topic [{id}]");
+                Some(id)
             }
+            Err(err) => {
+                warn!("Failed writing topic [{err}]");
+                None
+            }
+        }
     }
 
-    pub fn update_value(&self, key: u16, entry: EntryValue ) {
+    pub fn update_value(&self, key: u16, entry: EntryValue) {
         self.client.update_entry(key, entry);
     }
 }

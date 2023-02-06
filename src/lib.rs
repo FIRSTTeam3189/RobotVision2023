@@ -1,4 +1,8 @@
-use std::{path::Path, net::{SocketAddr, SocketAddrV6, Ipv6Addr}, str::FromStr};
+use std::{
+    net::{Ipv6Addr, SocketAddr, SocketAddrV6},
+    path::Path,
+    str::FromStr,
+};
 
 use apriltag::{Family, TagParams};
 use imageproc::geometric_transformations::Projection;
@@ -255,7 +259,7 @@ struct Cli {
 }
 
 fn get_default_network_table_addr() -> String {
-    format!("{}", SocketAddr::from(([0,0,0,0], 0)))
+    format!("{}", SocketAddr::from(([0, 0, 0, 0], 0)))
 }
 
 /// Contains all of the parameters needed to initialize the
