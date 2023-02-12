@@ -9,8 +9,6 @@ use crossbeam_channel::{bounded, Receiver, Sender};
 use log::{debug, info, warn};
 use nt::{Client, ConnectionCallbackType, EntryData, EntryValue, NetworkTables};
 
-const IP: &str = "ws://roboRIO-3189-FRC.local:1735";
-
 pub enum VisionMessage {
     NoTargets,
     AprilTag {

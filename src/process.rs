@@ -1,6 +1,5 @@
 use crate::{
-    networktable::{self, NetworkTableI, VisionMessage},
-    CalibrationError, CameraCalibration, DetectorParameters, RgbaImage,
+    CalibrationError, CameraCalibration, DetectorParameters, RgbaImage, network::Network,
 };
 use apriltag::{Detector, DetectorBuilder};
 use crossbeam_channel::{Receiver, RecvError, SendError, Sender};
@@ -110,8 +109,11 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
 
     let mut detector = detector_creator(&parameters);
     let tag_params = (&calibration).into();
-    let mut net = handle.block_on(NetworkTableI::new(&parameters.network_table_addr, "ni-rs"));
-    handle.block_on(net.init_value("test", nt::EntryValue::Boolean(true)));
+    // let mut net = handle.block_on(NetworkTableI::new(&parameters.network_table_addr, "ni-rs"));
+    // handle.block_on(net.init_value("test", nt::EntryValue::Boolean(true)));
+    let mut net = Network::new(&parameters.network_table_addr);
+    net.write(crate::network::VisionMessage::NoTargets);
+    net.read();
     debug!("Process & thread Init Complete!!!!!!!!!!!!!!!!!");
     loop {
         // `image` is a dynamic image.
@@ -185,7 +187,7 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
             .collect();
 
         if rects.is_empty() {
-            handle.block_on(net.init_value("test", nt::EntryValue::Boolean(true)));
+            // handle.block_on(net.init_value("test", nt::EntryValue::Boolean(true)));
         }
         for rect in rects {
             frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);

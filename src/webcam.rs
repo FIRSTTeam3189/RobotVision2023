@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 
 use eframe::egui;
 use egui::{ColorImage, TextureHandle};
-use image::{imageops, ImageBuffer, Rgba};
+use image::{imageops::{self, filter3x3}, ImageBuffer, Rgba};
 use nokhwa::{
     pixel_format::{LumaFormat, RgbAFormat},
     threaded::CallbackCamera,
@@ -21,17 +21,20 @@ use vision::{process::Processing, DetectorParameters, DynamicImage, RgbaImage};
 static IMAGE_SENDER: OnceCell<Arc<Mutex<Sender<DynamicImage>>>> = OnceCell::new();
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Logger::try_with_str("info")? // Write all error, warn, and info messages
-        .log_to_file(FileSpec::default().basename("test"))
-        .append()
-        .duplicate_to_stdout(Duplicate::Warn)
+    let file_spec = FileSpec::default().basename("test").directory("./log/");
+    let log_file = file_spec.as_pathbuf(None);
+    let test = Logger::try_with_str("trace")? // Write all error, warn, and info messages
+        .log_to_file(file_spec)
+        .duplicate_to_stdout(Duplicate::All)
         .rotate(
             // If the program runs long enough,
-            Criterion::Size(10000),   // - create a new file every day
+            Criterion::Size(1000 * 1000 * 1000),   // - create a new file every day
             Naming::Numbers,          // - let the rotated files have a timestamp in their name
             Cleanup::KeepLogFiles(7), // - keep at most 7 log files
         )
         .start()?;
+
+    trace!("------------------------------------Application Starting-----------------------------------------------");
     // Uncomment to list available cameras on the system
     // use nokhwa::{query, utils::ApiBackend};
     // let cameras = query(ApiBackend::Auto).unwrap();

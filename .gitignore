@@ -6,3 +6,4 @@ test-img
 ap-images
 *.ps
 *.pnm
+log/

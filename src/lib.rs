@@ -12,7 +12,7 @@ use thiserror::Error;
 
 pub use image::{DynamicImage, RgbImage, RgbaImage};
 
-pub mod networktable;
+pub mod network;
 pub mod process;
 use clap::*;
 
