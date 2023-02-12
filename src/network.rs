@@ -37,12 +37,11 @@ impl Network {
         debug!("Writing...");
         match message {
             VisionMessage::NoTargets => {
-                let mess = self.writer.write(&[0]);
-                // let mess = self.writer.write(b"\n");
-                debug!("bytes written: {}", mess.unwrap());
+                let mess = self.writer.write(&[0]).unwrap();
+                debug!("bytes written: {}", mess);
             },
             VisionMessage::AprilTag { tagtype, distance, id } => {
-                
+
             },
             VisionMessage::Contours { found, size } => {
 

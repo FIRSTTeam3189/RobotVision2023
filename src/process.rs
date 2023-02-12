@@ -111,9 +111,9 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
     let tag_params = (&calibration).into();
     // let mut net = handle.block_on(NetworkTableI::new(&parameters.network_table_addr, "ni-rs"));
     // handle.block_on(net.init_value("test", nt::EntryValue::Boolean(true)));
-    let mut net = Network::new(&parameters.network_table_addr);
-    net.write(crate::network::VisionMessage::NoTargets);
-    net.read();
+    let mut net = handle.block_on(Network::new(&parameters.network_table_addr));
+    // net.write(crate::network::VisionMessage::NoTargets);
+    // net.read();
     debug!("Process & thread Init Complete!!!!!!!!!!!!!!!!!");
     loop {
         // `image` is a dynamic image.
