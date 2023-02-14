@@ -12,7 +12,8 @@ use thiserror::Error;
 
 pub use image::{DynamicImage, RgbImage, RgbaImage};
 
-pub mod network;
+// pub mod network;
+pub mod networktable;
 pub mod process;
 use clap::*;
 
@@ -262,12 +263,18 @@ fn get_default_network_table_addr() -> String {
     format!("{}", SocketAddr::from(([0, 0, 0, 0], 0)))
 }
 
+fn get_default_network_table_port() -> u16 {
+    5810
+}
+
 /// Contains all of the parameters needed to initialize the
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DetectorParameters {
     families: Vec<AprilTagFamily>,
     #[serde(default = "get_default_network_table_addr")]
     network_table_addr: String,
+    #[serde(default = "get_default_network_table_port")]
+    network_table_port: u16,
     cli: Cli,
 }
 
@@ -276,6 +283,7 @@ impl Default for DetectorParameters {
         Self {
             families: vec![AprilTagFamily::default()],
             network_table_addr: get_default_network_table_addr(),
+            network_table_port: get_default_network_table_port(),
             cli: Cli::parse(),
         }
     }

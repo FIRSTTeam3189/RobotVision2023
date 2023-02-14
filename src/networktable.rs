@@ -1,14 +1,13 @@
 use std::{
     fmt::Display,
-    net::{SocketAddr, ToSocketAddrs},
-    time::Duration,
+    net::{SocketAddr, ToSocketAddrs, Ipv4Addr, IpAddr},
+    time::Duration, str::FromStr,
 };
 
 use crate::AprilTagFamily;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use log::{debug, info, warn};
-use nt::{Client, ConnectionCallbackType, EntryData, EntryValue, NetworkTables};
-
+use network_tables::{*, v4::Client, };
 pub enum VisionMessage {
     NoTargets,
     AprilTag {
@@ -27,7 +26,7 @@ pub enum VisionMessage {
 // }
 
 pub struct NetworkTableI {
-    pub client: NetworkTables<Client>,
+    pub client: network_tables::v4::Client,
 }
 
 pub enum NTError {
@@ -67,53 +66,44 @@ pub enum NTError {
 // }
 
 impl NetworkTableI {
-    pub async fn new<'a>(addr: &'a str, client_name: &'a str) -> NetworkTableI {
+    pub async fn new(addr: &str, port: u16) -> NetworkTableI {
         debug!("connecting to network tables at {addr}");
+        let addr = Ipv4Addr::from_str(&addr).unwrap();
         let client = match tokio::time::timeout(
             Duration::from_secs(5),
-            NetworkTables::connect(addr, &client_name),
-        )
-        .await
-        {
+            network_tables::v4::Client::new(
+            SocketAddr::new(IpAddr::V4(addr),
+            port)),
+        ).await {
             Ok(thing) => thing,
             Err(err) => panic!("connecting to network tables failed. [{err}]"),
         };
 
-        let nt = NetworkTableI {
-            client: client.unwrap(),
-        };
-
-        nt.client
-            .add_connection_callback(ConnectionCallbackType::ClientConnected, |l| {
-                info!("Connected! {}", l)
-            });
-        nt.client
-            .add_connection_callback(ConnectionCallbackType::ClientDisconnected, |l| {
-                info!("Disconnected! {}", l)
-            });
-
-        nt
+        NetworkTableI {
+            client: client,
+        }
     }
 
-    pub async fn init_value(&mut self, name: &str, entry: EntryValue) -> Option<u16> {
-        // self.client.reconnect().await;
-        match self
-            .client
-            .create_entry(EntryData::new(name.to_string(), 0, entry))
-            .await
-        {
-            Ok(id) => {
-                debug!("Wrote topic [{id}]");
-                Some(id)
+    pub async fn write_topic(&self, name: &str, entry: VisionMessage) /*-> Option<u16>*/ {
+        match entry {
+            VisionMessage::NoTargets => {
+                info!("Publishing Topic....");
+                self.client.publish_topic(name, network_tables::v4::Type::Float, None).await.unwrap();
+                info!("Topic Published!");
             }
-            Err(err) => {
-                warn!("Failed writing topic [{err}]");
-                None
+
+            VisionMessage::AprilTag { tagtype, distance, id } => {
+
+            }
+
+            VisionMessage::Contours { found, size } => {
+
             }
         }
     }
 
-    pub fn update_value(&self, key: u16, entry: EntryValue) {
-        self.client.update_entry(key, entry);
+    pub async fn read_topic(&self) {
+        // self.client.subscribe(topic_names)
+        
     }
 }

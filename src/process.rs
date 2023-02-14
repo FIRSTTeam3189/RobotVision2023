@@ -1,5 +1,5 @@
 use crate::{
-    CalibrationError, CameraCalibration, DetectorParameters, RgbaImage, network::Network,
+    CalibrationError, CameraCalibration, DetectorParameters, RgbaImage, networktable::{NetworkTableI, VisionMessage}
 };
 use apriltag::{Detector, DetectorBuilder};
 use crossbeam_channel::{Receiver, RecvError, SendError, Sender};
@@ -11,7 +11,7 @@ use imageproc::{
     geometry, morphology,
     rect::Rect,
 };
-use log::{debug, trace};
+use log::*;
 use tokio::{runtime::Handle, task::JoinHandle};
 use url::Url;
 
@@ -109,9 +109,9 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
 
     let mut detector = detector_creator(&parameters);
     let tag_params = (&calibration).into();
-    // let mut net = handle.block_on(NetworkTableI::new(&parameters.network_table_addr, "ni-rs"));
-    // handle.block_on(net.init_value("test", nt::EntryValue::Boolean(true)));
-    let mut net = handle.block_on(Network::new(&parameters.network_table_addr));
+    let mut net = handle.block_on(NetworkTableI::new(&parameters.network_table_addr, parameters.network_table_port));
+    handle.block_on(net.write_topic("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", VisionMessage::NoTargets));
+    // let mut net = handle.block_on(Network::new(&parameters.network_table_addr));
     // net.write(crate::network::VisionMessage::NoTargets);
     // net.read();
     debug!("Process & thread Init Complete!!!!!!!!!!!!!!!!!");
@@ -187,7 +187,7 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
             .collect();
 
         if rects.is_empty() {
-            // handle.block_on(net.init_value("test", nt::EntryValue::Boolean(true)));
+            // handle.block_on(net.write_topic("test", nt::EntryValue::Boolean(true)));
         }
         for rect in rects {
             frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);

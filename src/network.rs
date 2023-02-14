@@ -1,4 +1,4 @@
-use std::{net::TcpStream, io::{Write, Read, self, BufRead}};
+use std::{net::TcpStream, io::{Write, self, BufRead}};
 
 use log::*;
 
