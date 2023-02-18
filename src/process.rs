@@ -1,25 +1,11 @@
-use crate::{
-    CalibrationError, CameraCalibration, DetectorParameters, RgbaImage, networktable::{NetworkTableI, VisionMessage}
-};
+use crate::{ CalibrationError, CameraCalibration, DetectorParameters, RgbaImage, networktable::{NetworkTableI, VisionMessage} };
 use apriltag::{Detector, DetectorBuilder};
 use crossbeam_channel::{Receiver, RecvError, SendError, Sender};
 use image::{DynamicImage, ImageBuffer, Luma, Pixel, Rgba};
-use imageproc::{
-    self, contours,
-    definitions::{HasBlack, HasWhite},
-    distance_transform::Norm,
-    geometry, morphology,
-    rect::Rect,
-};
+use imageproc::{ self, contours, definitions::{HasBlack, HasWhite}, distance_transform::Norm, geometry, morphology, rect::Rect };
 use log::*;
-use tokio::{runtime::Handle, task::JoinHandle};
-use url::Url;
-
-use std::{
-    path::Path,
-    task::Poll,
-    thread::{self},
-};
+use tokio::{runtime::Handle};
+use std::{ path::Path,};
 
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -109,8 +95,7 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
 
     let mut detector = detector_creator(&parameters);
     let tag_params = (&calibration).into();
-    let mut net = handle.block_on(NetworkTableI::new(&parameters.network_table_addr, parameters.network_table_port));
-    handle.block_on(net.write_topic("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", VisionMessage::NoTargets));
+    let net = handle.block_on(NetworkTableI::new(&parameters.network_table_addr, parameters.network_table_port));
     // let mut net = handle.block_on(Network::new(&parameters.network_table_addr));
     // net.write(crate::network::VisionMessage::NoTargets);
     // net.read();
@@ -144,11 +129,12 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
 
         // Do the actual proccessing here
         let grayscale = image.into_luma8();
-        let detections = detector.detect(grayscale);
+        let detections = detector.detect(&grayscale);
         let rects: Vec<Rect> = detections
             .iter()
             .filter_map(|x| {
                 if let Some(_pose) = x.estimate_tag_pose(&tag_params) {
+                    let y =  _pose.rotation().data();
                     let c = x.corners();
                     let center = x.center();
 
@@ -173,11 +159,12 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
                         }
                     }
 
-                    if hx <= lx || hy <= ly || x.decision_margin() < 1100.0 {
+                    if hx <= lx || hy <= ly || x.decision_margin() < 1500.0 {
                         None
                     } else {
                         hx = (hx - center[0]) * 2.0;
                         hy = (hy - center[1]) * 2.0;
+                        debug!("{}",y[0]);
                         Some(Rect::at(lx as i32, ly as i32).of_size(hx as u32, hy as u32))
                     }
                 } else {
@@ -188,12 +175,13 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
 
         if rects.is_empty() {
             // handle.block_on(net.write_topic("test", nt::EntryValue::Boolean(true)));
+            handle.block_on(net.write_topic(VisionMessage::NoTargets));
         }
         for rect in rects {
             frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);
         }
 
-        match sender.try_send(DynamicImage::from(mask_p).to_rgba8()) {
+        match sender.try_send(DynamicImage::from(frame).to_rgba8()) {
             Ok(_) => {}
             Err(crossbeam_channel::TrySendError::Full(_)) => {
                 debug!("UI Thread is busy, skipping frame...")
@@ -204,7 +192,7 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
             }
         }
     }
-    std::mem::drop(detector);
+    // std::mem::drop(detector);
 
     Ok(())
 }

@@ -1,32 +1,23 @@
 use std::{
-    fmt::Display,
-    net::{SocketAddr, ToSocketAddrs, Ipv4Addr, IpAddr},
+    net::{SocketAddr, Ipv4Addr, IpAddr},
     time::Duration, str::FromStr,
 };
 
-use crate::AprilTagFamily;
-use crossbeam_channel::{bounded, Receiver, Sender};
-use log::{debug, info, warn};
-use network_tables::{*, v4::Client, };
+use log::{debug};
+use network_tables::*;
+
 pub enum VisionMessage {
     NoTargets,
     AprilTag {
-        tagtype: AprilTagFamily,
         distance: f64,
         id: f64,
     },
-    Contours {
-        found: bool,
-        size: f64,
-    },
+    Contours {},
 }
-
-// pub struct NetworkThread {
-//     netthread: tokio::task::JoinHandle<NetworkTableI>,
-// }
 
 pub struct NetworkTableI {
     pub client: network_tables::v4::Client,
+    pub topic: network_tables::v4::PublishedTopic
 }
 
 pub enum NTError {
@@ -34,36 +25,6 @@ pub enum NTError {
     Connected,
 }
 
-// impl NetworkThread {
-//     pub async fn log(msg: VisionMessage) -> NetworkThread {
-//         let (st, rt) = bounded(1);
-//         let netthread = tokio::spawn(async move {
-//             let net = NetworkTableI::new("Vision-Net".to_string()).await;
-//             for msg in rt {
-//                 match msg {
-//                     VisionMessage::NoTargets => {
-//                         net.write_value("found", EntryValue::Boolean(false)).await;
-//                     }
-//                     VisionMessage::AprilTag {
-//                         tagtype,
-//                         distance,
-//                         id,
-//                     } => {
-//                         net.write_value("distance", EntryValue::Double(distance))
-//                             .await;
-//                         net.write_value("id", EntryValue::Double(id)).await;
-//                     }
-//                     VisionMessage::Contours { found, size } => {}
-//                 }
-//             }
-//             net
-//         });
-
-//         let nthread = NetworkThread { netthread };
-
-//         nthread
-//     }
-// }
 
 impl NetworkTableI {
     pub async fn new(addr: &str, port: u16) -> NetworkTableI {
@@ -79,31 +40,43 @@ impl NetworkTableI {
             Err(err) => panic!("connecting to network tables failed. [{err}]"),
         };
 
+        let topic = client.publish_topic("Vision", v4::Type::FloatArray, None).await.unwrap();
+
         NetworkTableI {
-            client: client,
+            client,
+            topic
         }
     }
 
-    pub async fn write_topic(&self, name: &str, entry: VisionMessage) /*-> Option<u16>*/ {
+    pub async fn write_topic(&self, entry: VisionMessage) {
+
         match entry {
             VisionMessage::NoTargets => {
-                info!("Publishing Topic....");
-                self.client.publish_topic(name, network_tables::v4::Type::Float, None).await.unwrap();
-                info!("Topic Published!");
+                let data: Vec<network_tables::Value> = vec![
+                    network_tables::Value::F64(0.0)
+                ];
+                self.client.publish_value(&self.topic, &Value::Array(data)).await.unwrap();
             }
 
-            VisionMessage::AprilTag { tagtype, distance, id } => {
-
+            VisionMessage::AprilTag { distance, id } => {
+                let data: Vec<network_tables::Value> = vec![
+                    network_tables::Value::F64(1.0),
+                    network_tables::Value::F64(distance),
+                    network_tables::Value::F64(id)
+                ];
+                self.client.publish_value(&self.topic, &Value::Array(data)).await.unwrap();
             }
 
-            VisionMessage::Contours { found, size } => {
-
+            VisionMessage::Contours { } => {
+                let data: Vec<network_tables::Value> = vec![
+                    network_tables::Value::F64(2.0)
+                ];
+                self.client.publish_value(&self.topic, &Value::Array(data)).await.unwrap();
             }
         }
     }
 
     pub async fn read_topic(&self) {
-        // self.client.subscribe(topic_names)
-        
+        // let sub = self.client.subscribe(&["Vision"]).await.unwrap();
     }
 }

@@ -1,7 +1,6 @@
 use std::{
-    net::{Ipv6Addr, SocketAddr, SocketAddrV6},
+    net::{SocketAddr},
     path::Path,
-    str::FromStr,
 };
 
 use apriltag::{Family, TagParams};

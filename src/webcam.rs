@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .start()?;
 
-    trace!("------------------------------------Application Starting-----------------------------------------------");
+    trace!("------------------------------------ Application Starting -----------------------------------------------");
     // Uncomment to list available cameras on the system
     // use nokhwa::{query, utils::ApiBackend};
     // let cameras = query(ApiBackend::Auto).unwrap();

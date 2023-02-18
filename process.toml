@@ -2,8 +2,8 @@ families = ["Tag16H5"]
 network_table_addr = "172.22.11.2"
 network_table_port = 5810
 [cli]
-shapening = 5.0
-decimation = 5.0
+shapening = 0.0
+decimation = 0.0
 
 rmin = 100
 rmax = 200
