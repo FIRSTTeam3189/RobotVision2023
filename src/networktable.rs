@@ -16,8 +16,10 @@ pub enum VisionMessage {
 }
 
 pub struct NetworkTableI {
-    pub client: network_tables::v4::Client,
-    pub topic: network_tables::v4::PublishedTopic
+    client: network_tables::v4::Client,
+    detect_topic: network_tables::v4::PublishedTopic,
+    ap_id_topic: network_tables::v4::PublishedTopic,
+    ap_dist_topic: network_tables::v4::PublishedTopic,
 }
 
 pub enum NTError {
@@ -40,11 +42,14 @@ impl NetworkTableI {
             Err(err) => panic!("connecting to network tables failed. [{err}]"),
         };
 
-        let topic = client.publish_topic("Vision", v4::Type::FloatArray, None).await.unwrap();
-
+        let detect_topic = client.publish_topic("Vision/Detection", v4::Type::Int, None).await.unwrap();
+        let ap_id_topic = client.publish_topic("Vision/AprilTag/ID", v4::Type::Float, None).await.unwrap();
+        let ap_dist_topic = client.publish_topic("Vision/AprilTag/Distance", v4::Type::Float, None).await.unwrap();
         NetworkTableI {
             client,
-            topic
+            detect_topic,
+            ap_id_topic,
+            ap_dist_topic,
         }
     }
 
@@ -52,26 +57,17 @@ impl NetworkTableI {
 
         match entry {
             VisionMessage::NoTargets => {
-                let data: Vec<network_tables::Value> = vec![
-                    network_tables::Value::F64(0.0)
-                ];
-                self.client.publish_value(&self.topic, &Value::Array(data)).await.unwrap();
+                self.client.publish_value(&self.detect_topic, &Value::Integer(0.into())).await.unwrap();
             }
 
             VisionMessage::AprilTag { distance, id } => {
-                let data: Vec<network_tables::Value> = vec![
-                    network_tables::Value::F64(1.0),
-                    network_tables::Value::F64(distance),
-                    network_tables::Value::F64(id)
-                ];
-                self.client.publish_value(&self.topic, &Value::Array(data)).await.unwrap();
+                self.client.publish_value(&self.detect_topic, &Value::Integer(1.into())).await.unwrap();
+                self.client.publish_value(&self.ap_id_topic, &Value::F64(id)).await.unwrap();
+                self.client.publish_value(&self.ap_dist_topic, &Value::F64(distance)).await.unwrap();
             }
 
             VisionMessage::Contours { } => {
-                let data: Vec<network_tables::Value> = vec![
-                    network_tables::Value::F64(2.0)
-                ];
-                self.client.publish_value(&self.topic, &Value::Array(data)).await.unwrap();
+                self.client.publish_value(&self.detect_topic, &Value::Integer(2.into())).await.unwrap();
             }
         }
     }

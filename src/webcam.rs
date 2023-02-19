@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let log_file = file_spec.as_pathbuf(None);
     let test = Logger::try_with_str("trace")? // Write all error, warn, and info messages
         .log_to_file(file_spec)
-        .duplicate_to_stdout(Duplicate::All)
+        .duplicate_to_stdout(Duplicate::Debug)
         .rotate(
             // If the program runs long enough,
             Criterion::Size(1000 * 1000 * 1000),   // - create a new file every day

@@ -101,6 +101,8 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
     // net.read();
     debug!("Process & thread Init Complete!!!!!!!!!!!!!!!!!");
     loop {
+        handle.block_on(net.write_topic(VisionMessage::NoTargets));
+        debug!("Posted Message!");
         // `image` is a dynamic image.
         // `grayscale` is the image sent to the AprilTag detector to find tags
         // `frame` is used as a display for the UI.
@@ -133,6 +135,7 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
         let rects: Vec<Rect> = detections
             .iter()
             .filter_map(|x| {
+                debug!("\t-{x:?}");
                 if let Some(_pose) = x.estimate_tag_pose(&tag_params) {
                     let y =  _pose.rotation().data();
                     let c = x.corners();
@@ -159,12 +162,17 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
                         }
                     }
 
-                    if hx <= lx || hy <= ly || x.decision_margin() < 1500.0 {
+                    if hx <= lx || hy <= ly || x.decision_margin() < 1100.0 {
                         None
                     } else {
+
                         hx = (hx - center[0]) * 2.0;
                         hy = (hy - center[1]) * 2.0;
                         debug!("{}",y[0]);
+                        handle.block_on(net.write_topic(VisionMessage::AprilTag { 
+                            distance: x.hamming() as f64, 
+                            id: x.id() as f64 
+                        }));
                         Some(Rect::at(lx as i32, ly as i32).of_size(hx as u32, hy as u32))
                     }
                 } else {
@@ -173,10 +181,7 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
             })
             .collect();
 
-        if rects.is_empty() {
-            // handle.block_on(net.write_topic("test", nt::EntryValue::Boolean(true)));
-            handle.block_on(net.write_topic(VisionMessage::NoTargets));
-        }
+        if rects.is_empty() {}
         for rect in rects {
             frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);
         }
