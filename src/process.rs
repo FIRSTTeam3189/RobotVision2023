@@ -95,14 +95,22 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
 
     let mut detector = detector_creator(&parameters);
     let tag_params = (&calibration).into();
+
     let net = handle.block_on(NetworkTableI::new(&parameters.network_table_addr, parameters.network_table_port));
-    // let mut net = handle.block_on(Network::new(&parameters.network_table_addr));
-    // net.write(crate::network::VisionMessage::NoTargets);
-    // net.read();
+
+    let (net_tx, net_rx) = crossbeam_channel::bounded(5);
+    // let (tagproc_tx, tagproc_rx) = crossbeam_channel::bounded(5);
+
+    handle.spawn(async move {
+        loop {
+            debug!("Writing Topic!");
+            let thing = net_rx.recv().unwrap();
+            net.write_topic(thing).await;
+        }
+    });
+
     debug!("Process & thread Init Complete!!!!!!!!!!!!!!!!!");
     loop {
-        handle.block_on(net.write_topic(VisionMessage::NoTargets));
-        debug!("Posted Message!");
         // `image` is a dynamic image.
         // `grayscale` is the image sent to the AprilTag detector to find tags
         // `frame` is used as a display for the UI.
@@ -135,8 +143,11 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
         let rects: Vec<Rect> = detections
             .iter()
             .filter_map(|x| {
-                debug!("\t-{x:?}");
                 if let Some(_pose) = x.estimate_tag_pose(&tag_params) {
+                    let transform_matrix = _pose.translation().data().clone();
+                    let transform_matrix = [transform_matrix[0],transform_matrix[1],transform_matrix[2],];
+                    let rotation_matrix = _pose.rotation().data().clone();
+                    let rotation_matrix = [rotation_matrix[0],rotation_matrix[1],rotation_matrix[2],];
                     let y =  _pose.rotation().data();
                     let c = x.corners();
                     let center = x.center();
@@ -165,14 +176,16 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
                     if hx <= lx || hy <= ly || x.decision_margin() < 1100.0 {
                         None
                     } else {
-
                         hx = (hx - center[0]) * 2.0;
                         hy = (hy - center[1]) * 2.0;
                         debug!("{}",y[0]);
-                        handle.block_on(net.write_topic(VisionMessage::AprilTag { 
-                            distance: x.hamming() as f64, 
-                            id: x.id() as f64 
-                        }));
+                        net_tx.send(VisionMessage::AprilTag { 
+                            id: x.id() as f64,
+                            transform_matrix,
+                            rotation_matrix,
+                        }).unwrap();
+                        debug!("\t-{x:?}");
+                        debug!("{:?}", _pose.translation().data());
                         Some(Rect::at(lx as i32, ly as i32).of_size(hx as u32, hy as u32))
                     }
                 } else {
