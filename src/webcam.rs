@@ -22,8 +22,8 @@ static IMAGE_SENDER: OnceCell<Arc<Mutex<Sender<DynamicImage>>>> = OnceCell::new(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_spec = FileSpec::default().basename("test").directory("./log/");
-    let log_file = file_spec.as_pathbuf(None);
-    let test = Logger::try_with_str("trace")? // Write all error, warn, and info messages
+    let _log_file = file_spec.as_pathbuf(None);
+    let _test = Logger::try_with_str("debug")? // Write all error, warn, and info messages
         .log_to_file(file_spec)
         .duplicate_to_stdout(Duplicate::Debug)
         .rotate(
@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug!("Loaded PROCESSING");
     let rt = Runtime::new()?;
     let handle = rt.handle().clone();
-    let handle = std::thread::spawn(|| vision::process::process_thread(process, handle));
+    let _handle = std::thread::spawn(|| vision::process::process_thread(process, handle));
     debug!("Started Processing thread!");
     // Open camera stream, start GUI then when GUI exits, close the stream
     camera.open_stream().unwrap();
@@ -73,7 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn callback(image: Buffer) {
-    std::thread::sleep(Duration::from_millis(500));
+    std::thread::sleep(Duration::from_millis(4));
     // Get a lock to the image sender
     let tx = IMAGE_SENDER.get().unwrap().lock();
     // Decode the image as RGBA from the webcam

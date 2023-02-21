@@ -1,11 +1,11 @@
 use crate::{ CalibrationError, CameraCalibration, DetectorParameters, RgbaImage, networktable::{NetworkTableI, VisionMessage} };
 use apriltag::{Detector, DetectorBuilder};
-use crossbeam_channel::{Receiver, RecvError, SendError, Sender};
+use crossbeam_channel::{Receiver, RecvError, SendError, Sender, TrySendError};
 use image::{DynamicImage, ImageBuffer, Luma, Pixel, Rgba};
-use imageproc::{ self, contours, definitions::{HasBlack, HasWhite}, distance_transform::Norm, geometry, morphology, rect::Rect };
+use imageproc::{ self,/* contours, */ definitions::{HasBlack, HasWhite}/*, distance_transform::Norm, geometry, morphology, rect::Rect */};
 use log::*;
 use tokio::{runtime::Handle};
-use std::{ path::Path,};
+use std::{ path::Path};
 
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -78,7 +78,7 @@ impl Processing {
 }
 
 pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
-    const ARC_LENGTH_MIN: f64 = 20.0;
+    const _ARC_LENGTH_MIN: f64 = 20.0;
 
     let image_rx = params.image_rx;
     let calibration = params.calibration;
@@ -87,10 +87,14 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
 
     let val = parameters.cli.clone();
 
-    let aspect_ratio_max: f64 = val.aspect_max;
-    let aspect_ratio_min: f64 = val.aspect_min;
+    // Color boundaries
+    let _rb = vec![val.rmin as u8, val.rmax as u8];
+    let _gb = vec![val.gmin as u8, val.gmax as u8];
+    let _bb = vec![val.bmin as u8, val.bmax as u8];
 
-    let blue = Rgba([0u8, 0u8, 255u8, 255u8]);
+    let _aspect_ratio_max: f64 = val.aspect_max;
+    let _aspect_ratio_min: f64 = val.aspect_min;
+
     // rectangle: Rect::at(130, 10).of_size(200, 200);
 
     let mut detector = detector_creator(&parameters);
@@ -100,12 +104,14 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
 
     let (net_tx, net_rx) = crossbeam_channel::bounded(5);
     // let (tagproc_tx, tagproc_rx) = crossbeam_channel::bounded(5);
+    
 
     handle.spawn(async move {
         loop {
-            debug!("Writing Topic!");
-            let thing = net_rx.recv().unwrap();
-            net.write_topic(thing).await;
+            debug!("Channel contents amount {}", net_rx.len());
+            let message = net_rx.recv().unwrap();
+            net.write_topic(message).await;
+            //net.read_topic().await;
         }
     });
 
@@ -115,42 +121,36 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
         // `grayscale` is the image sent to the AprilTag detector to find tags
         // `frame` is used as a display for the UI.
         let image = image_rx.recv()?;
-        let mut frame = image.to_rgba8();
-        // Color boundaries
-        let rb = vec![val.rmin as u8, val.rmax as u8];
-        let gb = vec![val.gmin as u8, val.gmax as u8];
-        let bb = vec![val.bmin as u8, val.bmax as u8];
+        let frame = image.to_rgba8();
 
-        let mut mask_p = mask_maker(&frame, rb, gb, bb);
-        morphology::open_mut(&mut mask_p, Norm::L1, 2);
-        let found_contours = contours::find_contours::<i32>(&mask_p);
-        let mut accepted_contours: Vec<contours::Contour<i32>> = Vec::new();
-        for contour in found_contours {
-            if geometry::arc_length(contour.points.as_slice(), true) > ARC_LENGTH_MIN {
-                let min_area = geometry::min_area_rect(contour.points.as_slice());
-                // min_area set as: [top left, top right, bottom right, bottom left]
-                let aspect_ratio = ((min_area[0].x - min_area[1].x) as f64)
-                    / ((min_area[0].y - min_area[3].y) as f64);
-                if aspect_ratio_min < aspect_ratio && aspect_ratio < aspect_ratio_max {
-                    accepted_contours.push(contour);
-                }
-            }
-        }
+        // let mut mask_p = mask_maker(&frame, rb, gb, bb);
+        // morphology::open_mut(&mut mask_p, Norm::L1, 2);
+        // let found_contours = contours::find_contours::<i32>(&mask_p);
+        // let mut accepted_contours: Vec<contours::Contour<i32>> = Vec::new();
+        // for contour in found_contours {
+        //     if geometry::arc_length(contour.points.as_slice(), true) > ARC_LENGTH_MIN {
+        //         let min_area = geometry::min_area_rect(contour.points.as_slice());
+        //         // min_area set as: [top left, top right, bottom right, bottom left]
+        //         let aspect_ratio = ((min_area[0].x - min_area[1].x) as f64)
+        //             / ((min_area[0].y - min_area[3].y) as f64);
+        //         if aspect_ratio_min < aspect_ratio && aspect_ratio < aspect_ratio_max {
+        //             accepted_contours.push(contour);
+        //         }
+        //     }
+        // }
 
         // Do the actual proccessing here
         let grayscale = image.into_luma8();
         let detections = detector.detect(&grayscale);
-        let rects: Vec<Rect> = detections
+        let _rects: Vec<i8> = detections
             .iter()
             .filter_map(|x| {
                 if let Some(_pose) = x.estimate_tag_pose(&tag_params) {
                     let transform_matrix = _pose.translation().data().clone();
-                    let transform_matrix = [transform_matrix[0],transform_matrix[1],transform_matrix[2],];
+                    let transform_matrix = [transform_matrix[0],transform_matrix[1],transform_matrix[2]];
                     let rotation_matrix = _pose.rotation().data().clone();
-                    let rotation_matrix = [rotation_matrix[0],rotation_matrix[1],rotation_matrix[2],];
-                    let y =  _pose.rotation().data();
+                    let rotation_matrix = [rotation_matrix[0],rotation_matrix[1],rotation_matrix[2]];
                     let c = x.corners();
-                    let center = x.center();
 
                     let mut lx = c[0][0];
                     let mut hx = c[0][0];
@@ -173,20 +173,27 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
                         }
                     }
 
-                    if hx <= lx || hy <= ly || x.decision_margin() < 1100.0 {
+                    if hx <= lx || hy <= ly || x.decision_margin() < 1150.0 {
                         None
                     } else {
-                        hx = (hx - center[0]) * 2.0;
-                        hy = (hy - center[1]) * 2.0;
-                        debug!("{}",y[0]);
-                        net_tx.send(VisionMessage::AprilTag { 
-                            id: x.id() as f64,
+                        // hx = (hx - center[0]) * 2.0;
+                        // hy = (hy - center[1]) * 2.0;
+                        match net_tx.try_send(VisionMessage::AprilTag { 
+                            id: x.id() as i32,
                             transform_matrix,
                             rotation_matrix,
-                        }).unwrap();
-                        debug!("\t-{x:?}");
-                        debug!("{:?}", _pose.translation().data());
-                        Some(Rect::at(lx as i32, ly as i32).of_size(hx as u32, hy as u32))
+                        }) {
+                            Ok(_) => {}
+                            Err(TrySendError::Full(_)) => {
+                                // debug!("Dropping Data");
+                            }
+                            Err(TrySendError::Disconnected(_)) => {
+                                // warn!("Disconnected to Channel");
+                            }
+                        }
+                        debug!("translation: {:?}", _pose.translation());
+                        debug!("rotations: {:?}", _pose.rotation());
+                        Some(1)
                     }
                 } else {
                     None
@@ -194,11 +201,10 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
             })
             .collect();
 
-        if rects.is_empty() {}
-        for rect in rects {
-            frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);
-        }
-
+        // if rects.is_empty() {}
+        // for rect in rects {
+        //     frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);    
+        // }
         match sender.try_send(DynamicImage::from(frame).to_rgba8()) {
             Ok(_) => {}
             Err(crossbeam_channel::TrySendError::Full(_)) => {
@@ -211,7 +217,6 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
         }
     }
     // std::mem::drop(detector);
-
     Ok(())
 }
 
@@ -242,7 +247,7 @@ fn detector_creator(parameters: &DetectorParameters) -> Detector {
     detector
 }
 
-fn mask_maker(
+fn _mask_maker(
     frame: &ImageBuffer<Rgba<u8>, Vec<u8>>,
     rb: Vec<u8>,
     gb: Vec<u8>,

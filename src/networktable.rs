@@ -9,7 +9,7 @@ use network_tables::*;
 pub enum VisionMessage {
     NoTargets,
     AprilTag {
-        id: f64,
+        id: i32,
         transform_matrix: [f64;3],
         rotation_matrix: [f64;3]
     },
@@ -45,7 +45,7 @@ impl NetworkTableI {
         };
 
         let detect_topic = client.publish_topic("Vision/Detection", v4::Type::Int, None).await.unwrap();
-        let ap_id_topic = client.publish_topic("Vision/AprilTag/ID", v4::Type::Float, None).await.unwrap();
+        let ap_id_topic = client.publish_topic("Vision/AprilTag/ID", v4::Type::Int, None).await.unwrap();
         let ap_tmatrix_topic = client.publish_topic("Vision/AprilTag/TMatrix", v4::Type::FloatArray, None).await.unwrap();
         let ap_rmatrix_topic = client.publish_topic("Vision/AprilTag/RMatrix", v4::Type::FloatArray, None).await.unwrap();
 
@@ -66,7 +66,8 @@ impl NetworkTableI {
             }
 
             VisionMessage::AprilTag { id, transform_matrix, rotation_matrix } => {
-                self.client.publish_value(&self.ap_id_topic, &Value::F64(id)).await.unwrap();
+                self.client.publish_value(&self.detect_topic, &Value::Integer(1.into())).await.unwrap();
+                self.client.publish_value(&self.ap_id_topic, &Value::Integer(id.into())).await.unwrap();
                 self.client.publish_value(&self.ap_tmatrix_topic, &Value::Array(vec![
                     Value::F64(transform_matrix[0]),
                     Value::F64(transform_matrix[1]),
@@ -86,7 +87,11 @@ impl NetworkTableI {
     }
 
     pub async fn read_topic(&self) {
-        // let sub = self.client.subscribe(&["Vision"]).await.unwrap();
+        let mut enable_topic_sub = self.client.subscribe(&["Vision/Enable"]).await.unwrap();
+        if let Some(message) = enable_topic_sub.next().await {
+            let data = message.data;
+            debug!("Enable: {:?}", data.as_bool());
+        }
     }
 
 }
