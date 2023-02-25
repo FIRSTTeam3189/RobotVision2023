@@ -108,7 +108,6 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
 
     handle.spawn(async move {
         loop {
-            debug!("Channel contents amount {}", net_rx.len());
             let message = net_rx.recv().unwrap();
             net.write_topic(message).await;
             //net.read_topic().await;
@@ -147,9 +146,9 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
             .filter_map(|x| {
                 if let Some(_pose) = x.estimate_tag_pose(&tag_params) {
                     let transform_matrix = _pose.translation().data().clone();
-                    let transform_matrix = [transform_matrix[0],transform_matrix[1],transform_matrix[2]];
-                    let rotation_matrix = _pose.rotation().data().clone();
-                    let rotation_matrix = [rotation_matrix[0],rotation_matrix[1],rotation_matrix[2]];
+                    let transform_matrix = [transform_matrix[2],transform_matrix[0],transform_matrix[1]];
+                    let rotation_matrix = _pose.rotation().data().clone()[8];
+                    // The Z coordinates of the rotation matrix is sent to the network tables.
                     let c = x.corners();
 
                     let mut lx = c[0][0];

@@ -11,7 +11,7 @@ pub enum VisionMessage {
     AprilTag {
         id: i32,
         transform_matrix: [f64;3],
-        rotation_matrix: [f64;3]
+        rotation_matrix: f64
     },
     Contours {},
 }
@@ -73,11 +73,7 @@ impl NetworkTableI {
                     Value::F64(transform_matrix[1]),
                     Value::F64(transform_matrix[2])
                 ])).await.unwrap();
-                self.client.publish_value(&self.ap_rmatrix_topic, &Value::Array(vec![
-                    Value::F64(rotation_matrix[0]),
-                    Value::F64(rotation_matrix[1]),
-                    Value::F64(rotation_matrix[2]),
-                ])).await.unwrap();
+                self.client.publish_value(&self.ap_rmatrix_topic, &Value::F64(rotation_matrix)).await.unwrap();
             }
 
             VisionMessage::Contours { } => {
