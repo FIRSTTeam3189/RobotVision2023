@@ -200,6 +200,7 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
             })
             .collect();
 
+        if custom_poses.len() > 0 {
             let mut closest_distance: f64 = custom_poses[0].distance;
             let mut closest_pose: CustomPose = CustomPose{
                 distance: custom_poses[0].distance,
@@ -233,6 +234,18 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
                     // warn!("Disconnected to Channel");
                 }
             }
+        } else {
+            match net_tx.try_send(VisionMessage::NoTargets) {
+                Ok(_) => {}
+                Err(TrySendError::Full(_)) => {
+                    // debug!("Dropping Data");
+                }
+                Err(TrySendError::Disconnected(_)) => {
+                    // warn!("Disconnected to Channel");
+                }
+            }
+        }
+            
             
         // if rects.is_empty() {}
         // for rect in rects {
