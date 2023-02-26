@@ -10,7 +10,7 @@ pub enum VisionMessage {
     NoTargets,
     AprilTag {
         id: i32,
-        transform_matrix: [f64;3],
+        translation_matrix: [f64;3],
         rotation_matrix: f64
     },
     Contours {},
@@ -47,7 +47,7 @@ impl NetworkTableI {
         let detect_topic = client.publish_topic("Vision/Detection", v4::Type::Int, None).await.unwrap();
         let ap_id_topic = client.publish_topic("Vision/AprilTag/ID", v4::Type::Int, None).await.unwrap();
         let ap_tmatrix_topic = client.publish_topic("Vision/AprilTag/TMatrix", v4::Type::FloatArray, None).await.unwrap();
-        let ap_rmatrix_topic = client.publish_topic("Vision/AprilTag/RMatrix", v4::Type::FloatArray, None).await.unwrap();
+        let ap_rmatrix_topic = client.publish_topic("Vision/AprilTag/RMatrix", v4::Type::Float, None).await.unwrap();
 
         NetworkTableI {
             client,
@@ -65,13 +65,13 @@ impl NetworkTableI {
                 self.client.publish_value(&self.detect_topic, &Value::Integer(0.into())).await.unwrap();
             }
 
-            VisionMessage::AprilTag { id, transform_matrix, rotation_matrix } => {
+            VisionMessage::AprilTag { id, translation_matrix, rotation_matrix } => {
                 self.client.publish_value(&self.detect_topic, &Value::Integer(1.into())).await.unwrap();
                 self.client.publish_value(&self.ap_id_topic, &Value::Integer(id.into())).await.unwrap();
                 self.client.publish_value(&self.ap_tmatrix_topic, &Value::Array(vec![
-                    Value::F64(transform_matrix[0]),
-                    Value::F64(transform_matrix[1]),
-                    Value::F64(transform_matrix[2])
+                    Value::F64(translation_matrix[0]),
+                    Value::F64(translation_matrix[1]),
+                    Value::F64(translation_matrix[2])
                 ])).await.unwrap();
                 self.client.publish_value(&self.ap_rmatrix_topic, &Value::F64(rotation_matrix)).await.unwrap();
             }

@@ -34,6 +34,13 @@ pub struct Processing {
     sender: Sender<RgbaImage>,
 }
 
+pub struct CustomPose {
+    distance: f64,
+    id: usize,
+    translation_matrix: [f64; 3],
+    rotation_matrix: f64
+}
+
 impl Processing {
     const CAMERA_CAL_FILE_NAME: &str = "cam-cal.json";
     const DETECTOR_PERAMS_FILE_NAME: &str = "process.toml";
@@ -141,14 +148,15 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
         // Do the actual proccessing here
         let grayscale = image.into_luma8();
         let detections = detector.detect(&grayscale);
-        let _rects: Vec<i8> = detections
+        let custom_poses: Vec<CustomPose> = detections
             .iter()
             .filter_map(|x| {
                 if let Some(_pose) = x.estimate_tag_pose(&tag_params) {
-                    let transform_matrix = _pose.translation().data().clone();
-                    let transform_matrix = [transform_matrix[2],transform_matrix[0],transform_matrix[1]];
+                    let translation_matrix = _pose.translation().data().clone();
+                    let translation_matrix = [translation_matrix[2],translation_matrix[0],translation_matrix[1]];
                     let rotation_matrix = _pose.rotation().data().clone()[8];
-                    // The Z coordinates of the rotation matrix is sent to the network tables.
+                    // The Z coordinates of the rotation matrix is sent to the network tables
+
                     let c = x.corners();
 
                     let mut lx = c[0][0];
@@ -175,24 +183,16 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
                     if hx <= lx || hy <= ly || x.decision_margin() < 1150.0 {
                         None
                     } else {
+                        // Find distance from camera to AprilTag
+                        // If distance is less than shortest distance, the pose becomes the new
+                        // closest distance later
+                        let distance: f64 = f64::sqrt((translation_matrix[0] * translation_matrix[0]) + (translation_matrix[1] * translation_matrix[1]));
                         // hx = (hx - center[0]) * 2.0;
                         // hy = (hy - center[1]) * 2.0;
-                        match net_tx.try_send(VisionMessage::AprilTag { 
-                            id: x.id() as i32,
-                            transform_matrix,
-                            rotation_matrix,
-                        }) {
-                            Ok(_) => {}
-                            Err(TrySendError::Full(_)) => {
-                                // debug!("Dropping Data");
-                            }
-                            Err(TrySendError::Disconnected(_)) => {
-                                // warn!("Disconnected to Channel");
-                            }
-                        }
-                        debug!("translation: {:?}", _pose.translation());
-                        debug!("rotations: {:?}", _pose.rotation());
-                        Some(1)
+
+                        // debug!("translation: {:?}", _pose.translation());
+                        // debug!("rotations: {:?}", _pose.rotation());
+                        Some(CustomPose{distance, id: x.id(), translation_matrix, rotation_matrix})
                     }
                 } else {
                     None
@@ -200,6 +200,40 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
             })
             .collect();
 
+            let mut closest_distance: f64 = custom_poses[0].distance;
+            let mut closest_pose: CustomPose = CustomPose{
+                distance: custom_poses[0].distance,
+                id: custom_poses[0].id,
+                translation_matrix: custom_poses[0].translation_matrix,
+                rotation_matrix: custom_poses[0].rotation_matrix
+            };
+
+            for pose in custom_poses {
+                if pose.distance < closest_distance {
+                    closest_distance = pose.distance;
+                    closest_pose = CustomPose{
+                        distance: pose.distance,
+                        id: pose.id,
+                        translation_matrix: pose.translation_matrix,
+                        rotation_matrix: pose.rotation_matrix
+                    };
+                }
+            }
+
+            match net_tx.try_send(VisionMessage::AprilTag { 
+                id: closest_pose.id as i32,
+                translation_matrix: closest_pose.translation_matrix,
+                rotation_matrix: closest_pose.rotation_matrix,
+            }) {
+                Ok(_) => {}
+                Err(TrySendError::Full(_)) => {
+                    // debug!("Dropping Data");
+                }
+                Err(TrySendError::Disconnected(_)) => {
+                    // warn!("Disconnected to Channel");
+                }
+            }
+            
         // if rects.is_empty() {}
         // for rect in rects {
         //     frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);    
