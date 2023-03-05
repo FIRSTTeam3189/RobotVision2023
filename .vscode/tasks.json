@@ -15,7 +15,7 @@
     },
     {
         "label": "run",
-        "command": "./target/release/webcam.exe",
+        "command": "./target/release/webcam",
         "group": "build"
     },
     {

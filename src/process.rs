@@ -107,15 +107,21 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
     let mut detector = detector_creator(&parameters);
     let tag_params = (&calibration).into();
 
+    debug!("Initializing network tables!");
+
     let net = handle.block_on(NetworkTableI::new(&parameters.network_table_addr, parameters.network_table_port));
+    debug!("Created Channels");
 
     let (net_tx, net_rx) = crossbeam_channel::bounded(5);
     // let (tagproc_tx, tagproc_rx) = crossbeam_channel::bounded(5);
     
-
+    debug!("Network-Table thread started!!");
     handle.spawn(async move {
+        
         loop {
+            debug!("Writing!");
             let message = net_rx.recv().unwrap();
+            debug!("Topic writing!");
             net.write_topic(message).await;
             //net.read_topic().await;
         }
@@ -251,16 +257,16 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
         // for rect in rects {
         //     frame = imageproc::drawing::draw_filled_rect(&frame, rect, blue);    
         // }
-        match sender.try_send(DynamicImage::from(frame).to_rgba8()) {
-            Ok(_) => {}
-            Err(crossbeam_channel::TrySendError::Full(_)) => {
-                debug!("UI Thread is busy, skipping frame...")
-            }
-            Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
-                debug!("UI Thread disconnected! Breaking loop...");
-                break;
-            }
-        }
+        // match sender.try_send(DynamicImage::from(frame).to_rgba8()) {
+        //     Ok(_) => {}
+        //     Err(crossbeam_channel::TrySendError::Full(_)) => {
+        //         debug!("UI Thread is busy, skipping frame...")
+        //     }
+        //     Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
+        //         debug!("UI Thread disconnected! Breaking loop...");
+        //         break;
+        //     }
+        // }
     }
     // std::mem::drop(detector);
     Ok(())

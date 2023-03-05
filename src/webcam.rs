@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize camera, request the highest possible framerate
     let format = RequestedFormatType::AbsoluteHighestFrameRate;
     let format = RequestedFormat::new::<RgbAFormat>(format);
-    let mut camera = CallbackCamera::new(CameraIndex::Index(1), format, callback).unwrap();
+    let mut camera = CallbackCamera::new(CameraIndex::Index(0), format, callback).unwrap();
     debug!("Created Camera!!!!");
 
     //Start processing thread
@@ -62,18 +62,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug!("Started Processing thread!");
     // Open camera stream, start GUI then when GUI exits, close the stream
     camera.open_stream().unwrap();
-    let options = eframe::NativeOptions::default();
-    eframe::run_native(
-        "Webcam",
-        options,
-        Box::new(|_cc| Box::new(WebcamApp::new(process_rx))),
-    );
+    // let options = eframe::NativeOptions::default();
+    // eframe::run_native(
+    //     "Webcam",
+    //     options,
+    //     Box::new(|_cc| Box::new(WebcamApp::new(process_rx))),
+    // );
+    loop {
+        std::thread::sleep(Duration::from_secs(1));
+    }
     camera.stop_stream().unwrap();
     Ok(())
 }
 
 fn callback(image: Buffer) {
-    std::thread::sleep(Duration::from_millis(4));
+    // std::thread::sleep(Duration::from_millis(4));
     // Get a lock to the image sender
     let tx = IMAGE_SENDER.get().unwrap().lock();
     // Decode the image as RGBA from the webcam
