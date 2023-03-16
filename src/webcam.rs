@@ -5,9 +5,9 @@ use parking_lot::Mutex;
 
 use eframe::egui;
 use egui::{ColorImage, TextureHandle};
-use image::{imageops::{self, filter3x3}, ImageBuffer, Rgba};
+use image::*;
 use nokhwa::{
-    pixel_format::{LumaFormat, RgbAFormat},
+    pixel_format::{RgbAFormat},
     threaded::CallbackCamera,
     utils::{CameraIndex, RequestedFormat, RequestedFormatType},
     Buffer,
@@ -15,7 +15,7 @@ use nokhwa::{
 use once_cell::sync::OnceCell;
 use std::{env, sync::Arc, time::Duration};
 use tokio::runtime::Runtime;
-use vision::{process::Processing, DetectorParameters, DynamicImage, RgbaImage};
+use vision::{process::Processing, DynamicImage, RgbaImage};
 
 /// The channel on which frames are sent to the GUI
 static IMAGE_SENDER: OnceCell<Arc<Mutex<Sender<DynamicImage>>>> = OnceCell::new();
@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // std::fs::write("test.toml", toml::to_vec(&test)?)?;
     // Create sender/receiver
     let (tx, rx) = bounded(1);
-    let (process_tx, process_rx) = bounded(1);
+    let (process_tx, _process_rx) = bounded(1);
     IMAGE_SENDER.set(Arc::new(Mutex::new(tx))).unwrap();
 
     // Initialize camera, request the highest possible framerate

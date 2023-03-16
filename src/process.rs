@@ -90,7 +90,7 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
     let image_rx = params.image_rx;
     let calibration = params.calibration;
     let parameters = params.parameters;
-    let sender = params.sender;
+    let _sender = params.sender;
 
     let val = parameters.cli.clone();
 
@@ -119,9 +119,7 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
     handle.spawn(async move {
         
         loop {
-            debug!("Writing!");
             let message = net_rx.recv().unwrap();
-            debug!("Topic writing!");
             net.write_topic(message).await;
             //net.read_topic().await;
         }
@@ -133,7 +131,7 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
         // `grayscale` is the image sent to the AprilTag detector to find tags
         // `frame` is used as a display for the UI.
         let image = image_rx.recv()?;
-        let frame = image.to_rgba8();
+        let _frame = image.to_rgba8();
 
         // let mut mask_p = mask_maker(&frame, rb, gb, bb);
         // morphology::open_mut(&mut mask_p, Norm::L1, 2);
@@ -160,7 +158,13 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
                 if let Some(_pose) = x.estimate_tag_pose(&tag_params) {
                     let translation_matrix = _pose.translation().data().clone();
                     let translation_matrix = [translation_matrix[2],translation_matrix[0],translation_matrix[1]];
-                    let rotation_matrix = _pose.rotation().data().clone()[8];
+                    let rotation_matrix = _pose.rotation().data().clone();
+                    // Correcting tag rotation to send as -90 to 90
+                    let mut corrected_rotation = 90.0 * (rotation_matrix[6]);
+                    if corrected_rotation > 5.0 {
+                        corrected_rotation *= 1.08;
+                    }
+                    let rotation_matrix = corrected_rotation;
                     // The Z coordinates of the rotation matrix is sent to the network tables
 
                     let c = x.corners();

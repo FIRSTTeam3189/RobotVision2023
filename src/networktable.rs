@@ -59,15 +59,12 @@ impl NetworkTableI {
     }
 
     pub async fn write_topic(&self, entry: VisionMessage) {
-        debug!("writing Topic!");
         match entry {
             VisionMessage::NoTargets => {
-                debug!("No Target!");
                 self.client.publish_value(&self.detect_topic, &Value::Integer(0.into())).await.unwrap();
             }
 
             VisionMessage::AprilTag { id, translation_matrix, rotation_matrix } => {
-                debug!("AprilTag Detected!");
                 self.client.publish_value(&self.detect_topic, &Value::Integer(1.into())).await.unwrap();
                 self.client.publish_value(&self.ap_id_topic, &Value::Integer(id.into())).await.unwrap();
                 self.client.publish_value(&self.ap_tmatrix_topic, &Value::Array(vec![
