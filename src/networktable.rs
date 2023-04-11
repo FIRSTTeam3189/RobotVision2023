@@ -10,18 +10,15 @@ pub enum VisionMessage {
     NoTargets,
     AprilTag {
         id: i32,
-        translation_matrix: [f64;3],
-        rotation_matrix: f64
-    },
-    Contours {},
+        translation_matrix: [f64;3]
+    }
 }
 
 pub struct NetworkTableI {
     client: network_tables::v4::Client,
     detect_topic: network_tables::v4::PublishedTopic,
     ap_id_topic: network_tables::v4::PublishedTopic,
-    ap_tmatrix_topic: network_tables::v4::PublishedTopic,
-    ap_rmatrix_topic: network_tables::v4::PublishedTopic
+    ap_tmatrix_topic: network_tables::v4::PublishedTopic
 }
 
 pub enum NTError {
@@ -44,17 +41,15 @@ impl NetworkTableI {
             Err(err) => panic!("connecting to network tables failed. [{err}]"),
         };
 
-        let detect_topic = client.publish_topic("Vision/Detection", v4::Type::Int, None).await.unwrap();
-        let ap_id_topic = client.publish_topic("Vision/AprilTag/ID", v4::Type::Int, None).await.unwrap();
-        let ap_tmatrix_topic = client.publish_topic("Vision/AprilTag/TMatrix", v4::Type::FloatArray, None).await.unwrap();
-        let ap_rmatrix_topic = client.publish_topic("Vision/AprilTag/RMatrix", v4::Type::Float, None).await.unwrap();
+        let detect_topic = client.publish_topic("SmartDashboard/Vision/Detection", v4::Type::Int, None).await.unwrap();
+        let ap_id_topic = client.publish_topic("SmartDashboard/Vision/AprilTag/ID", v4::Type::Int, None).await.unwrap();
+        let ap_tmatrix_topic = client.publish_topic("SmartDashboard/Vision/AprilTag/TMatrix", v4::Type::FloatArray, None).await.unwrap();
 
         NetworkTableI {
             client,
             detect_topic,
             ap_id_topic,
-            ap_tmatrix_topic,
-            ap_rmatrix_topic
+            ap_tmatrix_topic
         }
     }
 
@@ -64,7 +59,7 @@ impl NetworkTableI {
                 self.client.publish_value(&self.detect_topic, &Value::Integer(0.into())).await.unwrap();
             }
 
-            VisionMessage::AprilTag { id, translation_matrix, rotation_matrix } => {
+            VisionMessage::AprilTag { id, translation_matrix } => {
                 self.client.publish_value(&self.detect_topic, &Value::Integer(1.into())).await.unwrap();
                 self.client.publish_value(&self.ap_id_topic, &Value::Integer(id.into())).await.unwrap();
                 self.client.publish_value(&self.ap_tmatrix_topic, &Value::Array(vec![
@@ -72,11 +67,6 @@ impl NetworkTableI {
                     Value::F64(translation_matrix[1]),
                     Value::F64(translation_matrix[2])
                 ])).await.unwrap();
-                self.client.publish_value(&self.ap_rmatrix_topic, &Value::F64(rotation_matrix)).await.unwrap();
-            }
-
-            VisionMessage::Contours { } => {
-                self.client.publish_value(&self.detect_topic, &Value::Integer(2.into())).await.unwrap();
             }
         }
     }

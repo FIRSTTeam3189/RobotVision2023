@@ -35,10 +35,9 @@ pub struct Processing {
 }
 
 pub struct CustomPose {
-    distance: f64,
+    closest_tag_distance: f64,
     id: usize,
-    translation_matrix: [f64; 3],
-    rotation_matrix: f64
+    translation_matrix: [f64; 3]
 }
 
 impl Processing {
@@ -158,14 +157,9 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
                 if let Some(_pose) = x.estimate_tag_pose(&tag_params) {
                     let translation_matrix = _pose.translation().data().clone();
                     let translation_matrix = [translation_matrix[2],translation_matrix[0],translation_matrix[1]];
-                    let rotation_matrix = _pose.rotation().data().clone();
-                    // Correcting tag rotation to send as -90 to 90
-                    let mut corrected_rotation = 90.0 * (rotation_matrix[6]);
-                    if corrected_rotation > 5.0 {
-                        corrected_rotation *= 1.08;
-                    }
-                    let rotation_matrix = corrected_rotation;
-                    // The Z coordinates of the rotation matrix is sent to the network tables
+                    // let rot_matrix = _pose.rotation().data().clone();
+                    // let rotation_matrix = [rot_matrix[0], rot_matrix[1], rot_matrix[2], rot_matrix[3], rot_matrix[4], rot_matrix[5], rot_matrix[6], rot_matrix[7],
+                    // rot_matrix[8], 2.0, 5.0, 3.0];
 
                     let c = x.corners();
 
@@ -196,13 +190,13 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
                         // Find distance from camera to AprilTag
                         // If distance is less than shortest distance, the pose becomes the new
                         // closest distance later
-                        let distance: f64 = f64::sqrt((translation_matrix[0] * translation_matrix[0]) + (translation_matrix[1] * translation_matrix[1]));
+                        let closest_tag_distance: f64 = f64::sqrt((translation_matrix[0] * translation_matrix[0]) + (translation_matrix[1] * translation_matrix[1]));
                         // hx = (hx - center[0]) * 2.0;
                         // hy = (hy - center[1]) * 2.0;
 
                         // debug!("translation: {:?}", _pose.translation());
                         // debug!("rotations: {:?}", _pose.rotation());
-                        Some(CustomPose{distance, id: x.id(), translation_matrix, rotation_matrix})
+                        Some(CustomPose{closest_tag_distance, id: x.id(), translation_matrix})
                     }
                 } else {
                     None
@@ -211,30 +205,27 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
             .collect();
 
         if custom_poses.len() > 0 {
-            let mut closest_distance: f64 = custom_poses[0].distance;
+            let mut closest_distance: f64 = custom_poses[0].closest_tag_distance;
             let mut closest_pose: CustomPose = CustomPose{
-                distance: custom_poses[0].distance,
+                closest_tag_distance: custom_poses[0].closest_tag_distance,
                 id: custom_poses[0].id,
-                translation_matrix: custom_poses[0].translation_matrix,
-                rotation_matrix: custom_poses[0].rotation_matrix
+                translation_matrix: custom_poses[0].translation_matrix
             };
 
             for pose in custom_poses {
-                if pose.distance < closest_distance {
-                    closest_distance = pose.distance;
+                if pose.closest_tag_distance < closest_distance {
+                    closest_distance = pose.closest_tag_distance;
                     closest_pose = CustomPose{
-                        distance: pose.distance,
+                        closest_tag_distance: pose.closest_tag_distance,
                         id: pose.id,
-                        translation_matrix: pose.translation_matrix,
-                        rotation_matrix: pose.rotation_matrix
+                        translation_matrix: pose.translation_matrix
                     };
                 }
             }
 
             match net_tx.try_send(VisionMessage::AprilTag { 
                 id: closest_pose.id as i32,
-                translation_matrix: closest_pose.translation_matrix,
-                rotation_matrix: closest_pose.rotation_matrix,
+                translation_matrix: closest_pose.translation_matrix
             }) {
                 Ok(_) => {}
                 Err(TrySendError::Full(_)) => {
