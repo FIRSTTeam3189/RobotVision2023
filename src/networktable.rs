@@ -21,11 +21,6 @@ pub struct NetworkTableI {
     ap_tmatrix_topic: network_tables::v4::PublishedTopic
 }
 
-pub enum NTError {
-    Disconnected,
-    Connected,
-}
-
 
 impl NetworkTableI {
     pub async fn new(addr: &str, port: u16) -> NetworkTableI {
@@ -41,32 +36,32 @@ impl NetworkTableI {
             Err(err) => panic!("connecting to network tables failed. [{err}]"),
         };
 
-        let detect_topic = client.publish_topic("SmartDashboard/Vision/Detection", v4::Type::Int, None).await.unwrap();
-        let ap_id_topic = client.publish_topic("SmartDashboard/Vision/AprilTag/ID", v4::Type::Int, None).await.unwrap();
-        let ap_tmatrix_topic = client.publish_topic("SmartDashboard/Vision/AprilTag/TMatrix", v4::Type::FloatArray, None).await.unwrap();
+        let detect_topic = client.publish_topic("Vision/Detection", v4::Type::Int, None).await.unwrap();
+        let ap_id_topic = client.publish_topic("Vision/AprilTag/ID", v4::Type::Int, None).await.unwrap();
+        let ap_tmatrix_topic = client.publish_topic("Vision/AprilTag/TMatrix", v4::Type::FloatArray, None).await.unwrap();
 
-        NetworkTableI {
-            client,
-            detect_topic,
-            ap_id_topic,
-            ap_tmatrix_topic
+        NetworkTableI { 
+            client, 
+            detect_topic, 
+            ap_id_topic, 
+            ap_tmatrix_topic 
         }
     }
 
     pub async fn write_topic(&self, entry: VisionMessage) {
         match entry {
             VisionMessage::NoTargets => {
-                self.client.publish_value(&self.detect_topic, &Value::Integer(0.into())).await.unwrap();
+                let _output = self.client.publish_value(&self.detect_topic, &Value::Integer(0.into())).await;
             }
 
             VisionMessage::AprilTag { id, translation_matrix } => {
-                self.client.publish_value(&self.detect_topic, &Value::Integer(1.into())).await.unwrap();
-                self.client.publish_value(&self.ap_id_topic, &Value::Integer(id.into())).await.unwrap();
-                self.client.publish_value(&self.ap_tmatrix_topic, &Value::Array(vec![
+                let _detect_output = self.client.publish_value(&self.detect_topic, &Value::Integer(1.into())).await;
+                let _id_output = self.client.publish_value(&self.ap_id_topic, &Value::Integer(id.into())).await;
+                let _t_matoutput = self.client.publish_value(&self.ap_tmatrix_topic, &Value::Array(vec![
                     Value::F64(translation_matrix[0]),
                     Value::F64(translation_matrix[1]),
                     Value::F64(translation_matrix[2])
-                ])).await.unwrap();
+                ])).await;
             }
         }
     }

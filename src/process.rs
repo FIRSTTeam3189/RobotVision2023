@@ -262,8 +262,11 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
         //         break;
         //     }
         // }
+        // Just for avoiding the warning this will never run
+        if true {
+            break;
+        }
     }
-    // std::mem::drop(detector);
     Ok(())
 }
 
