@@ -1,6 +1,6 @@
 use crate::{ CalibrationError, CameraCalibration, DetectorParameters, RgbaImage, networktable::{NetworkTableI, VisionMessage} };
 use apriltag::{Detector, DetectorBuilder};
-use crossbeam_channel::{Receiver, RecvError, SendError, Sender, TrySendError};
+use crossbeam_channel::{Receiver, RecvError, SendError, Sender, TrySendError, TryRecvError};
 use image::{DynamicImage, ImageBuffer, Luma, Pixel, Rgba};
 use imageproc::{ self,/* contours, */ definitions::{HasBlack, HasWhite}/*, distance_transform::Norm, geometry, morphology, rect::Rect */};
 use log::*;
@@ -44,6 +44,10 @@ impl Processing {
     const CAMERA_CAL_FILE_NAME: &str = "cam-cal.json";
     const DETECTOR_PERAMS_FILE_NAME: &str = "process.toml";
 
+    pub fn camera_index(&self) -> u32{
+        self.parameters.camera_index
+    }
+    
     pub fn new(image_rx: Receiver<DynamicImage>, sender: Sender<RgbaImage>) -> Self {
         Self {
             image_rx,
@@ -118,8 +122,15 @@ pub fn process_thread(params: Processing, handle: Handle) -> ProcessResult<()> {
     handle.spawn(async move {
         
         loop {
-            let message = net_rx.recv().unwrap();
-            net.write_topic(message).await;
+            match net_rx.recv() {
+                Ok(msg) => {
+                    net.write_topic(msg).await;
+                }
+                Err(err) => {
+                    debug!("No data being Logged: [{err}]");
+                }
+            }
+            
             //net.read_topic().await;
         }
     });

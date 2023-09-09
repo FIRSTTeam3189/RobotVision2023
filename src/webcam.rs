@@ -50,11 +50,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize camera, request the highest possible framerate
     let format = RequestedFormatType::AbsoluteHighestFrameRate;
     let format = RequestedFormat::new::<RgbAFormat>(format);
-    let mut camera = CallbackCamera::new(CameraIndex::Index(0), format, callback).unwrap();
-    debug!("Created Camera!!!!");
-
     //Start processing thread
     let process = Processing::load(rx, process_tx, env::current_dir()?)?;
+    let mut camera = CallbackCamera::new(CameraIndex::Index(process.camera_index()), format, callback).unwrap();
+    debug!("Created Camera!!!!");
     debug!("Loaded PROCESSING");
     let rt = Runtime::new()?;
     let handle = rt.handle().clone();
@@ -68,9 +67,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         std::thread::sleep(Duration::from_secs(1));
         // Just for avoiding the warning this will never run
-        if true {
-            break;
-        }
     }
     camera.stop_stream().unwrap();
     Ok(())

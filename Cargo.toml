@@ -8,6 +8,10 @@ edition = "2021"
 name = "vision"
 path = "src/lib.rs"
 
+[[bin]]
+name = "webcam"
+path = "src/webcam.rs"
+
 [dependencies]
 # Needed only for GUI apps
 egui = { version = "0.19.0", optional = true }
@@ -47,7 +51,8 @@ parking_lot = "0.12"
 # Crossbeam-channels for best performance
 crossbeam-channel = "0.5"
 # nt = { version = "3.0.0", features = [] }
-network-tables = { version = "0.0.5", features = ["client-v4"] }
+network-tables = { path = "../network-tables-rs", features = ["client-v4"] }
+# network-tables = { version = "0.1", features = ["client-v4"] }
 url = "2.3"
 
 [dependencies.nokhwa]
@@ -57,18 +62,12 @@ version = "0.10.3"
 features = ["input-native", "output-threaded"]
 
 [features]
-default = []
 gui = ["egui", "eframe", "egui_extras"]
 save-pix = []
 
 [profile.comp]
 inherits = "release"
 lto = true
-
-[[bin]]
-name = "webcam"
-path = "src/webcam.rs"
-required-features = ["gui"]
 
 # [target.x86_64-unknown-linux-musl]
 # linker = "rust-lld"

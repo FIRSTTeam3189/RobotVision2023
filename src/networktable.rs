@@ -24,13 +24,14 @@ pub struct NetworkTableI {
 
 impl NetworkTableI {
     pub async fn new(addr: &str, port: u16) -> NetworkTableI {
-        debug!("connecting to network tables at {addr}");
         let addr = Ipv4Addr::from_str(&addr).unwrap();
+        let socket_addr = SocketAddr::new(IpAddr::V4(addr),
+            port);
+        debug!("connecting to network tables at {socket_addr}");
         let client = match tokio::time::timeout(
             Duration::from_secs(5),
             network_tables::v4::Client::new(
-            SocketAddr::new(IpAddr::V4(addr),
-            port)),
+                socket_addr),
         ).await {
             Ok(thing) => thing,
             Err(err) => panic!("connecting to network tables failed. [{err}]"),

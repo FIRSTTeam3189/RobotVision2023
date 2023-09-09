@@ -274,6 +274,7 @@ pub struct DetectorParameters {
     network_table_addr: String,
     #[serde(default = "get_default_network_table_port")]
     network_table_port: u16,
+    camera_index: u32,
     cli: Cli,
 }
 
@@ -283,6 +284,7 @@ impl Default for DetectorParameters {
             families: vec![AprilTagFamily::default()],
             network_table_addr: get_default_network_table_addr(),
             network_table_port: get_default_network_table_port(),
+            camera_index: 1,
             cli: Cli::parse(),
         }
     }
